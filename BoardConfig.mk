@@ -92,6 +92,8 @@ TW_EXCLUDE_NANO := true
 TW_EXCLUDE_BASH := true
 TW_EXCLUDE_APEX := true
 TW_EXCLUDE_FB2PNG := true
+TW_EXCLUDE_TWRPAPP := true
+TW_EXCLUDE_LOGCAT := true
 
 # TWRP Configuration
 TW_SCREEN_BLANK_ON_BOOT := true
