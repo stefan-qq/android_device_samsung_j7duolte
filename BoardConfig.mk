@@ -1,4 +1,3 @@
-#
 # Copyright (C) 2026 The Android Open Source Project
 # Copyright (C) 2026 SebaUbuntu's TWRP device tree generator
 #
@@ -79,12 +78,15 @@ PLATFORM_SECURITY_PATCH := 2099-12-31
 VENDOR_SECURITY_PATCH := 2099-12-31
 PLATFORM_VERSION := 16.1.0
 
+# Force Global LZMA Compression
+BOARD_RAMDISK_COMPRESSION := lzma
+
 # TWRP Trim Configs
 TW_THEME := portrait_hdpi
 TW_EXTRA_LANGUAGES := false
 LZMA_RAMDISK_TARGETS := recovery
 
-# Aggressive Shrinkage Flags
+# Aggressive Shrinkage Flags (Max Exclusions)
 TW_DISABLE_TTF := true
 TW_EXCLUDE_MTP := true
 TW_EXCLUDE_TZDATA := true
@@ -92,6 +94,10 @@ TW_EXCLUDE_NANO := true
 TW_EXCLUDE_BASH := true
 TW_EXCLUDE_APEX := true
 TW_EXCLUDE_FB2PNG := true
+TW_EXCLUDE_TWRPAPP := true
+TW_EXCLUDE_LOGCAT := true
+TW_NO_EXFAT := true
+TW_NO_EXFAT_FUSE := true
 
 # TWRP Configuration
 TW_SCREEN_BLANK_ON_BOOT := true
