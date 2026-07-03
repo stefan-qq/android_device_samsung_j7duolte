@@ -34,10 +34,7 @@ TARGET_NO_BOOTLOADER := true
 # Display
 TARGET_SCREEN_DENSITY := 280
 
-# Dynamic Kernel Compression Hack (Saves massive space if the prebuilt kernel is uncompressed)
-$(shell if od -An -N2 -t x1 $(DEVICE_PATH)/prebuilt/kernel | grep -q '1f 8b'; then cp $(DEVICE_PATH)/prebuilt/kernel $(DEVICE_PATH)/prebuilt/kernel.gz; else gzip -9 -c $(DEVICE_PATH)/prebuilt/kernel > $(DEVICE_PATH)/prebuilt/kernel.gz; fi)
-
-# Kernel
+# Kernel Environment Setup
 BOARD_KERNEL_BASE := 0x10000000
 BOARD_KERNEL_CMDLINE := androidboot.selinux=permissive
 BOARD_KERNEL_PAGESIZE := 2048
@@ -50,17 +47,17 @@ BOARD_KERNEL_SEPARATED_DT := true
 TARGET_KERNEL_CONFIG := j7duolte_defconfig
 TARGET_KERNEL_SOURCE := kernel/samsung/j7duolte
 
-# Kernel - prebuilt
+# Kernel - Use clean native AOSP compilation paths
 TARGET_FORCE_PREBUILT_KERNEL := true
 ifeq ($(TARGET_FORCE_PREBUILT_KERNEL),true)
-TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/kernel.gz
+TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/kernel
 TARGET_PREBUILT_DT := $(DEVICE_PATH)/prebuilt/dt.img
 BOARD_MKBOOTIMG_ARGS += --dtb $(TARGET_PREBUILT_DT)
 BOARD_KERNEL_SEPARATED_DT := 
 endif
 
 # Partitions
-BOARD_FLASH_BLOCK_SIZE := 131072 # (BOARD_KERNEL_PAGESIZE * 64)
+BOARD_FLASH_BLOCK_SIZE := 131072
 BOARD_BOOTIMAGE_PARTITION_SIZE := 31848992
 BOARD_RECOVERYIMAGE_PARTITION_SIZE := 31848992
 BOARD_HAS_LARGE_FILESYSTEM := true
@@ -76,17 +73,17 @@ TARGET_BOARD_PLATFORM := universal7884
 TARGET_USERIMAGES_USE_EXT4 := true
 TARGET_USERIMAGES_USE_F2FS := true
 
-# Hack: prevent anti rollback
+# Prevent anti-rollback blocks
 PLATFORM_SECURITY_PATCH := 2099-12-31
 VENDOR_SECURITY_PATCH := 2099-12-31
 PLATFORM_VERSION := 16.1.0
 
-# TWRP Trim Configs
+# Advanced TWRP Compression Core
 TW_THEME := portrait_hdpi
 TW_EXTRA_LANGUAGES := false
 LZMA_RAMDISK_TARGETS := recovery
 
-# Aggressive Shrinkage Flags (Max Exclusions)
+# Size Pruning Controls
 TW_DISABLE_TTF := true
 TW_EXCLUDE_MTP := true
 TW_EXCLUDE_TZDATA := true
