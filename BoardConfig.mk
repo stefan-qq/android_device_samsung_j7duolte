@@ -10,14 +10,7 @@ DEVICE_PATH := device/samsung/j7duolte
 ALLOW_MISSING_DEPENDENCIES := true
 
 # -----------------------------------------------------------------------------
-# Global Compiler-Level Size Optimizations (-Os & Garbage Collection)
-# -----------------------------------------------------------------------------
-TARGET_GLOBAL_CFLAGS += -Os -fomit-frame-pointer -fdata-sections -ffunction-sections
-TARGET_GLOBAL_CPPFLAGS += -Os -fomit-frame-pointer -fdata-sections -ffunction-sections
-TARGET_GLOBAL_LDFLAGS += -Wl,--gc-sections
-
-# -----------------------------------------------------------------------------
-# Architecture - Capped at 32-bit to minimize binary and pointer sizes
+# Architecture - Capped at 32-bit to reduce pointer sizes and binary tables
 # -----------------------------------------------------------------------------
 TARGET_ARCH := arm
 TARGET_ARCH_VARIANT := armv7-a-neon
@@ -43,7 +36,7 @@ TARGET_NO_BOOTLOADER := true
 TARGET_SCREEN_DENSITY := 280
 
 # -----------------------------------------------------------------------------
-# Kernel - Offsets matched exactly to Stock Recovery
+# Kernel - Layout matched exactly to physical storage specs
 # -----------------------------------------------------------------------------
 BOARD_KERNEL_BASE := 0x10000000
 BOARD_KERNEL_CMDLINE := androidboot.selinux=permissive
@@ -68,7 +61,7 @@ BOARD_KERNEL_SEPARATED_DT :=
 endif
 
 # -----------------------------------------------------------------------------
-# Partitions (Strictly capped at J7 Duo physical hardware boundaries)
+# Partitions (Strict J7 Duo hardware boundary rules)
 # -----------------------------------------------------------------------------
 BOARD_FLASH_BLOCK_SIZE := 131072
 BOARD_BOOTIMAGE_PARTITION_SIZE := 31848992
@@ -93,24 +86,31 @@ TARGET_USERIMAGES_USE_EXT4 := true
 TARGET_USERIMAGES_USE_F2FS := true
 
 # -----------------------------------------------------------------------------
-# TWRP Exhaustive Feature Cuts (Maximum possible storage compression)
+# TWRP Exhaustive Feature Cuts (Android 10 Ramdisk Size Minimization)
 # -----------------------------------------------------------------------------
 TW_THEME := portrait_mdpi
 TW_EXTRA_LANGUAGES := false
 
-# Enforce maximum possible userland ramdisk compression toolchain
+# Max out userland compression utilities
 BOARD_RAMDISK_COMPRESSION := xz
 LZMA_RAMDISK_TARGETS := recovery
 
-# Complete feature purge to drop ramdisk allocation below the 8.5MB limit
+# Core minimal compilation behaviors
 TW_BUILD_MINIMAL_TWRP := true
 TW_MINIMAL_BUILD := true
 TW_DISABLE_TTF := true
+
+# Drop heavy unnecessary binaries included by default in Android 10
+TW_EXCLUDE_LPDUMP := true
+TW_EXCLUDE_PYTHON := true
+TW_EXCLUDE_SUPOL := true
+TW_EXCLUDE_APEX := true
+
+# Pure storage optimization cuts
 TW_EXCLUDE_MTP := true
 TW_EXCLUDE_TZDATA := true
 TW_EXCLUDE_NANO := true
 TW_EXCLUDE_BASH := true
-TW_EXCLUDE_APEX := true
 TW_EXCLUDE_FB2PNG := true
 TW_EXCLUDE_TWRPAPP := true
 TW_EXCLUDE_LOGCAT := true
