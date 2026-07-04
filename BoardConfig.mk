@@ -10,22 +10,15 @@ DEVICE_PATH := device/samsung/j7duolte
 ALLOW_MISSING_DEPENDENCIES := true
 
 # -----------------------------------------------------------------------------
-# Architecture
+# Architecture - Optimized to 32-bit to fit within hardware partition limits
 # -----------------------------------------------------------------------------
 
-TARGET_ARCH := arm64
-TARGET_ARCH_VARIANT := armv8-a
-TARGET_CPU_ABI := arm64-v8a
-TARGET_CPU_ABI2 :=
+TARGET_ARCH := arm
+TARGET_ARCH_VARIANT := armv7-a-neon
+TARGET_CPU_ABI := armeabi-v7a
+TARGET_CPU_ABI2 := armeabi
 TARGET_CPU_VARIANT := generic
-TARGET_CPU_VARIANT_RUNTIME := generic
-
-TARGET_2ND_ARCH := arm
-TARGET_2ND_ARCH_VARIANT := armv7-a-neon
-TARGET_2ND_CPU_ABI := armeabi-v7a
-TARGET_2ND_CPU_ABI2 := armeabi
-TARGET_2ND_CPU_VARIANT := generic
-TARGET_2ND_CPU_VARIANT_RUNTIME := cortex-a53
+TARGET_CPU_VARIANT_RUNTIME := cortex-a53
 
 # -----------------------------------------------------------------------------
 # APEX
@@ -114,7 +107,7 @@ TW_EXTRA_LANGUAGES := false
 BOARD_RAMDISK_COMPRESSION := xz
 LZMA_RAMDISK_TARGETS := recovery
 
-# Aggressive Shrinkage Flags (Max Exclusions to fit within remaining 8MB)
+# Extreme Shrinkage Flags to guarantee it fits under the 8.5MB ceiling
 TW_DISABLE_TTF := true
 TW_EXCLUDE_MTP := true
 TW_EXCLUDE_TZDATA := true
@@ -123,7 +116,7 @@ TW_EXCLUDE_BASH := true
 TW_EXCLUDE_APEX := true
 TW_EXCLUDE_FB2PNG := true
 TW_EXCLUDE_TWRPAPP := true
-TW_EXCLUDE_LOGCAT := true # Set back to true to save ~1MB of diagnostic overhead
+TW_EXCLUDE_LOGCAT := true
 TW_NO_EXFAT := true
 TW_NO_EXFAT_FUSE := true
 TW_INCLUDE_CRYPTO_FBE := false
