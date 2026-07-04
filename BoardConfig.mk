@@ -47,17 +47,7 @@ TARGET_NO_BOOTLOADER := true
 TARGET_SCREEN_DENSITY := 280
 
 # -----------------------------------------------------------------------------
-# Compress stock kernel if necessary
-# -----------------------------------------------------------------------------
-
-$(shell if od -An -N2 -t x1 $(DEVICE_PATH)/prebuilt/kernel | grep -q '1f 8b'; then \
-cp $(DEVICE_PATH)/prebuilt/kernel $(DEVICE_PATH)/prebuilt/kernel.gz; \
-else \
-gzip -9 -c $(DEVICE_PATH)/prebuilt/kernel > $(DEVICE_PATH)/prebuilt/kernel.gz; \
-fi)
-
-# -----------------------------------------------------------------------------
-# Kernel
+# Kernel - Offsets matched exactly to Stock Recovery
 # -----------------------------------------------------------------------------
 
 BOARD_KERNEL_BASE := 0x10000000
@@ -70,38 +60,27 @@ BOARD_MKBOOTIMG_ARGS += --kernel_offset 0x00008000
 BOARD_MKBOOTIMG_ARGS += --ramdisk_offset $(BOARD_RAMDISK_OFFSET)
 BOARD_MKBOOTIMG_ARGS += --tags_offset $(BOARD_KERNEL_TAGS_OFFSET)
 
-BOARD_KERNEL_IMAGE_NAME := Image.gz
-
-BOARD_KERNEL_SEPARATED_DT := true
-
-TARGET_KERNEL_CONFIG := j7duolte_defconfig
-TARGET_KERNEL_SOURCE := kernel/samsung/j7duolte
-
 # -----------------------------------------------------------------------------
-# Prebuilt kernel
+# Prebuilt Kernel Config (No compression, use raw uncompressed stock kernel)
 # -----------------------------------------------------------------------------
 
 TARGET_FORCE_PREBUILT_KERNEL := true
 
 ifeq ($(TARGET_FORCE_PREBUILT_KERNEL),true)
-
-TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/kernel.gz
-
+# Point directly to the raw, uncompressed stock kernel file
+TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/kernel
 TARGET_PREBUILT_DT := $(DEVICE_PATH)/prebuilt/dt.img
-
 BOARD_MKBOOTIMG_ARGS += --dtb $(TARGET_PREBUILT_DT)
-
-BOARD_KERNEL_SEPARATED_DT :=
-
+BOARD_KERNEL_SEPARATED_DT := 
 endif
 
 # -----------------------------------------------------------------------------
-# Partitions
+# Partitions (Strictly capped at J7 Duo physical hardware boundaries)
 # -----------------------------------------------------------------------------
 
 BOARD_FLASH_BLOCK_SIZE := 131072
 BOARD_BOOTIMAGE_PARTITION_SIZE := 31848992
-BOARD_RECOVERYIMAGE_PARTITION_SIZE := 39845888
+BOARD_RECOVERYIMAGE_PARTITION_SIZE := 31848992 # Hard limit to prevent Emergency screen
 
 BOARD_HAS_LARGE_FILESYSTEM := true
 
@@ -125,14 +104,17 @@ TARGET_USERIMAGES_USE_EXT4 := true
 TARGET_USERIMAGES_USE_F2FS := true
 
 # -----------------------------------------------------------------------------
-# TWRP
+# TWRP Size Reduction & Optimization Configs
 # -----------------------------------------------------------------------------
 
 TW_THEME := portrait_mdpi
 TW_EXTRA_LANGUAGES := false
 
+# Maximum possible compression for the ramdisk environment
+BOARD_RAMDISK_COMPRESSION := xz
 LZMA_RAMDISK_TARGETS := recovery
 
+# Aggressive Shrinkage Flags (Max Exclusions to fit within remaining 8MB)
 TW_DISABLE_TTF := true
 TW_EXCLUDE_MTP := true
 TW_EXCLUDE_TZDATA := true
@@ -141,7 +123,7 @@ TW_EXCLUDE_BASH := true
 TW_EXCLUDE_APEX := true
 TW_EXCLUDE_FB2PNG := true
 TW_EXCLUDE_TWRPAPP := true
-TW_EXCLUDE_LOGCAT := false
+TW_EXCLUDE_LOGCAT := true # Set back to true to save ~1MB of diagnostic overhead
 TW_NO_EXFAT := true
 TW_NO_EXFAT_FUSE := true
 TW_INCLUDE_CRYPTO_FBE := false
