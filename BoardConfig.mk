@@ -106,7 +106,7 @@ TW_EXCLUDE_PYTHON := true
 TW_EXCLUDE_SUPOL := true
 TW_EXCLUDE_APEX := true
 
-# Pure storage optimization cuts
+# Pure storage optimization cuts (Using explicit exclusion flags)
 TW_EXCLUDE_MTP := true
 TW_EXCLUDE_TZDATA := true
 TW_EXCLUDE_NANO := true
@@ -116,14 +116,11 @@ TW_EXCLUDE_TWRPAPP := true
 TW_EXCLUDE_LOGCAT := true
 TW_NO_EXFAT := true
 TW_NO_EXFAT_FUSE := true
-TW_INCLUDE_CRYPTO := false
-TW_INCLUDE_CRYPTO_FBE := false
 TW_EXCLUDE_RESETPROP := true
 TW_EXCLUDE_ANYKERNEL := true
 TW_EXCLUDE_ENCRYPTED_BACKUPS := true
 TW_EXCLUDE_QUOTA := true
 TW_EXCLUDE_SYSLOG := true
-TW_INCLUDE_NTFS_3G := false
 
 TW_SCREEN_BLANK_ON_BOOT := true
 TW_INPUT_BLACKLIST := "hbtp_vm"
