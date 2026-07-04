@@ -79,7 +79,7 @@ ifeq ($(TARGET_FORCE_PREBUILT_KERNEL),true)
 TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/kernel
 TARGET_PREBUILT_DT := $(DEVICE_PATH)/prebuilt/dt.img
 BOARD_MKBOOTIMG_ARGS += --dtb $(TARGET_PREBUILT_DT)
-BOARD_KERNEL_SEPARATED_DT :=
+BOARD_KERNEL_SEPARATED_DT := true
 endif
 
 # -----------------------------------------------------------------------------
