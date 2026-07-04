@@ -29,10 +29,10 @@ TARGET_2ND_CPU_VARIANT := generic
 TARGET_2ND_CPU_VARIANT_RUNTIME := cortex-a53
 
 # -----------------------------------------------------------------------------
-# APEX
+# Platform
 # -----------------------------------------------------------------------------
 
-OVERRIDE_TARGET_FLATTEN_APEX := true
+TARGET_BOARD_PLATFORM := universal7884
 
 # -----------------------------------------------------------------------------
 # Bootloader
@@ -42,10 +42,10 @@ TARGET_BOOTLOADER_BOARD_NAME := exynos7884
 TARGET_NO_BOOTLOADER := true
 
 # -----------------------------------------------------------------------------
-# Platform
+# APEX
 # -----------------------------------------------------------------------------
 
-TARGET_BOARD_PLATFORM := universal7884
+OVERRIDE_TARGET_FLATTEN_APEX := true
 
 # -----------------------------------------------------------------------------
 # Display
@@ -58,17 +58,17 @@ TARGET_SCREEN_DENSITY := 280
 # -----------------------------------------------------------------------------
 
 BOARD_KERNEL_BASE := 0x10000000
+BOARD_KERNEL_CMDLINE := androidboot.selinux=permissive
 BOARD_KERNEL_PAGESIZE := 2048
+
 BOARD_RAMDISK_OFFSET := 0x01000000
 BOARD_KERNEL_TAGS_OFFSET := 0x00000100
 
-BOARD_KERNEL_CMDLINE := androidboot.selinux=permissive
+BOARD_KERNEL_IMAGE_NAME := Image
 
 BOARD_MKBOOTIMG_ARGS += --kernel_offset 0x00008000
 BOARD_MKBOOTIMG_ARGS += --ramdisk_offset $(BOARD_RAMDISK_OFFSET)
 BOARD_MKBOOTIMG_ARGS += --tags_offset $(BOARD_KERNEL_TAGS_OFFSET)
-
-BOARD_KERNEL_IMAGE_NAME := Image
 
 TARGET_KERNEL_SOURCE := kernel/samsung/j7duolte
 TARGET_KERNEL_CONFIG := j7duolte_defconfig
@@ -100,7 +100,7 @@ BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := ext4
 TARGET_COPY_OUT_VENDOR := vendor
 
 # -----------------------------------------------------------------------------
-# Recovery Filesystems
+# Recovery
 # -----------------------------------------------------------------------------
 
 TARGET_USERIMAGES_USE_EXT4 := true
