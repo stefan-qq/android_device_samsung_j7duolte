@@ -59,6 +59,17 @@ BOARD_KERNEL_SEPARATED_DT := true
 endif
 BOARD_BUILD_SYSTEM_ROOT_IMAGE := false
 # -----------------------------------------------------------------------------
+# Recovery ramdisk (prebuilt — see notes below)
+# -----------------------------------------------------------------------------
+# This device's kernel does not successfully boot a ramdisk built from the
+# twrp-11 minimal manifest's compiled init/recovery userspace (system-as-root
+# style). A verified-working ramdisk was assembled using this device's own
+# kernel+DTB paired with the classic-layout init/sbin/recovery userspace from
+# a proven-working TWRP 3.3.0 build for a sibling Exynos device (j7y17lte),
+# plus this device's own recovery.fstab. Using that prebuilt ramdisk directly
+# rather than building one from source.
+BOARD_PREBUILT_RECOVERY_RAMDISK := $(DEVICE_PATH)/prebuilt/ramdisk-recovery.cpio.gz
+# -----------------------------------------------------------------------------
 # Partitions
 # -----------------------------------------------------------------------------
 BOARD_FLASH_BLOCK_SIZE := 131072
@@ -74,25 +85,3 @@ TARGET_COPY_OUT_VENDOR := vendor
 # -----------------------------------------------------------------------------
 TARGET_USERIMAGES_USE_EXT4 := true
 TARGET_USERIMAGES_USE_F2FS := true
-# -----------------------------------------------------------------------------
-# TWRP
-# -----------------------------------------------------------------------------
-TW_THEME := portrait_mdpi
-TW_EXTRA_LANGUAGES := false
-TW_USE_TOOLBOX := true
-TW_DISABLE_TTF := true
-TW_EXCLUDE_MTP := true
-TW_EXCLUDE_TWRPAPP := true
-TW_EXCLUDE_TZDATA := true
-TW_EXCLUDE_NANO := true
-TW_EXCLUDE_BASH := true
-TW_EXCLUDE_FB2PNG := true
-TW_EXCLUDE_APEX := true
-TW_NO_EXFAT := true
-TW_NO_EXFAT_FUSE := true
-TW_INCLUDE_CRYPTO_FBE := false
-TW_INPUT_BLACKLIST := "hbtp_vm"
-TW_SCREEN_BLANK_ON_BOOT := true
-TW_BRIGHTNESS_PATH := "/sys/class/backlight/panel/brightness"
-TW_MAX_BRIGHTNESS := 255
-TW_DEFAULT_BRIGHTNESS := 150
