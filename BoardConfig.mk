@@ -69,6 +69,11 @@ BOARD_BUILD_SYSTEM_ROOT_IMAGE := false
 # plus this device's own recovery.fstab. Using that prebuilt ramdisk directly
 # rather than building one from source.
 BOARD_PREBUILT_RECOVERY_RAMDISK := $(DEVICE_PATH)/prebuilt/ramdisk-recovery.cpio.gz
+# TW_THEME is still required by the build system's theme-selection step even
+# though the ramdisk itself is prebuilt (nothing from this build's compiled
+# TWRP source is actually used, since recovery/init come from the prebuilt
+# ramdisk above instead).
+TW_THEME := portrait_mdpi
 # -----------------------------------------------------------------------------
 # Partitions
 # -----------------------------------------------------------------------------
