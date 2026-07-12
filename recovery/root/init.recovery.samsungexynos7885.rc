@@ -22,4 +22,3 @@ on init
 on boot
     # Force the first source-built image to ADB-only mode.
     setprop persist.sys.usb.config adb
-    setprop sys.usb.config adb
