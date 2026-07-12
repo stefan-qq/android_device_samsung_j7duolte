@@ -1,5 +1,5 @@
 # Samsung Exynos7884 recovery USB: one FunctionFS ADB gadget only.
-# Do not add functions/adb.0 and do not configure MTP in this first bring-up.
+# Legacy ConfigFS ADB and MTP functions are intentionally excluded.
 
 on fs
     mount configfs none /sys/kernel/config
