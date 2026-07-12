@@ -5,7 +5,7 @@
 # duplicate PRODUCT_COPY_FILES destinations for those files.
 
 PRODUCT_PROPERTY_OVERRIDES += \
-    ro.hardware=exynos7884 \
+    ro.hardware=samsungexynos7885 \
     ro.product.board=exynos7884 \
     ro.board.platform=universal7884 \
     ro.product.device=j7duolte \

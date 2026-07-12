@@ -142,6 +142,12 @@ def main() -> int:
         "adbd": {"sbin/adbd", "system/bin/adbd"},
         "recovery fstab": {"etc/recovery.fstab", "system/etc/recovery.fstab"},
         "device USB rc": {"init.recovery.usb.rc"},
+        "hardware init rc": {
+            "init.recovery.samsungexynos7885.rc",
+        },
+        "hardware ueventd rc": {
+            "ueventd.samsungexynos7885.rc",
+        },
     }
     normalized = {item.lstrip("./") for item in listing}
     for label, choices in required_any.items():
@@ -164,6 +170,32 @@ def main() -> int:
         for obsolete in ("recovery/root/init.rc", "recovery/root/ueventd.rc", "recovery/root/sepolicy_version"):
             if (args.tree / obsolete).exists():
                 errors.append(f"obsolete top-level override still exists: {obsolete}")
+        stale_hardware_files = (
+            "recovery/root/init.recovery.exynos7884.rc",
+            "recovery/root/ueventd.exynos7884.rc",
+        )
+
+        for stale in stale_hardware_files:
+            if (args.tree / stale).exists():
+                errors.append(
+                    f"stale hardware-specific rc remains: {stale}"
+                )
+
+        device_mk = (args.tree / "device.mk").read_text(
+            errors="ignore"
+        )
+
+        if "ro.hardware=samsungexynos7885" not in device_mk:
+            errors.append(
+                "device.mk does not use stock "
+                "ro.hardware=samsungexynos7885"
+            )
+
+        if b"androidboot.hardware=samsungexynos7885" not in dt:
+            errors.append(
+                "DT does not advertise stock "
+                "samsungexynos7885 hardware name"
+            )
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     report = {
