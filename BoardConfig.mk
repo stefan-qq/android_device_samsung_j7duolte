@@ -74,7 +74,7 @@ TARGET_COPY_OUT_ODM := odm
 # Recovery
 TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery.fstab
 TARGET_SCREEN_DENSITY := 280
-TW_THEME := portrait_mdpi
+TW_THEME := portrait_hdpi
 
 # First bring-up: ADB only. MTP and external SD deliberately stay disabled until
 # USB enumeration and adbd are stable.
