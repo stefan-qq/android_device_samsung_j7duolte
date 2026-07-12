@@ -21,29 +21,30 @@ on fs
     write /sys/kernel/config/usb_gadget/g1/configs/b.1/MaxPower 0x30
 
     mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
-    symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb /sys/kernel/config/usb_gadget/g1/configs/b.1/f1
+    symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb \
+        /sys/kernel/config/usb_gadget/g1/configs/b.1/f1
 
+
+# The generic TWRP init may briefly enable Samsung's legacy android_usb
+# gadget because this is an eng build. Disable it before using ConfigFS.
+on boot
+    write /sys/class/android_usb/android0/enable 0
+    setprop sys.usb.config none
 
 on property:sys.usb.config=none
-    write /sys/class/android_usb/android0/enable 0
     write /sys/kernel/config/usb_gadget/g1/UDC ""
     stop adbd
     setprop sys.usb.ffs.ready 0
     setprop sys.usb.state none
+
+# Perform a deliberate property transition.
+on property:sys.usb.state=none
+    setprop sys.usb.config adb
 
 on property:sys.usb.config=adb
     start adbd
 
 # Bind only after adbd has opened the FunctionFS endpoints.
 on property:sys.usb.ffs.ready=1 && property:sys.usb.config=adb
-    write /sys/class/android_usb/android0/enable 0
-    write /sys/class/android_usb/android0/idVendor 04E8
-    write /sys/class/android_usb/android0/idProduct 6860
-    write /sys/class/android_usb/android0/f_ffs/aliases adb
-    write /sys/class/android_usb/android0/functions adb
     write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
-    write /sys/class/android_usb/android0/enable 1
-    setprop sys.usb.state adb
-
-on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1
     setprop sys.usb.state adb
