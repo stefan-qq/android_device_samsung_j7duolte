@@ -45,8 +45,11 @@ BOARD_MKBOOTIMG_ARGS += --board $(BOARD_KERNEL_BOARD_NAME)
 # Keep the exact Android 10 stock kernel and DT for the first source build.
 TARGET_FORCE_PREBUILT_KERNEL := true
 TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/kernel
-TARGET_PREBUILT_DT := $(DEVICE_PATH)/prebuilt/dt.img
-BOARD_KERNEL_SEPARATED_DT := true
+
+# Do not ask the legacy build system to regenerate dt.img with dtbToolCM.
+# Package the exact stock DT payload directly into the recovery image.
+BOARD_MKBOOTIMG_ARGS += --dt $(DEVICE_PATH)/prebuilt/dt.img
+
 BOARD_BUILD_SYSTEM_ROOT_IMAGE := false
 
 # Partitions (PIT-derived, 512-byte sectors)
