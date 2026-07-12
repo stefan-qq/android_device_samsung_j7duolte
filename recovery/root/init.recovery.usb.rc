@@ -1,0 +1,49 @@
+# Samsung Exynos7884 recovery USB: one FunctionFS ADB gadget only.
+# Do not add functions/adb.0 and do not configure MTP in this first bring-up.
+
+on fs
+    mount configfs none /sys/kernel/config
+
+    mkdir /sys/kernel/config/usb_gadget/g1 0770 shell shell
+    write /sys/kernel/config/usb_gadget/g1/idVendor 0x04e8
+    write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
+    write /sys/kernel/config/usb_gadget/g1/bcdDevice 0x0404
+    write /sys/kernel/config/usb_gadget/g1/bcdUSB 0x0200
+
+    mkdir /sys/kernel/config/usb_gadget/g1/strings/0x409 0770 shell shell
+    write /sys/kernel/config/usb_gadget/g1/strings/0x409/serialnumber ${ro.serialno}
+    write /sys/kernel/config/usb_gadget/g1/strings/0x409/manufacturer SAMSUNG
+    write /sys/kernel/config/usb_gadget/g1/strings/0x409/product SAMSUNG_Android
+
+    mkdir /sys/kernel/config/usb_gadget/g1/configs/b.1 0770 shell shell
+    mkdir /sys/kernel/config/usb_gadget/g1/configs/b.1/strings/0x409 0770 shell shell
+    write /sys/kernel/config/usb_gadget/g1/configs/b.1/strings/0x409/configuration adb
+    write /sys/kernel/config/usb_gadget/g1/configs/b.1/MaxPower 0x30
+
+    mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
+    symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb /sys/kernel/config/usb_gadget/g1/configs/b.1/f1
+
+
+on property:sys.usb.config=none
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/kernel/config/usb_gadget/g1/UDC ""
+    stop adbd
+    setprop sys.usb.ffs.ready 0
+    setprop sys.usb.state none
+
+on property:sys.usb.config=adb
+    start adbd
+
+# Bind only after adbd has opened the FunctionFS endpoints.
+on property:sys.usb.ffs.ready=1 && property:sys.usb.config=adb
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/idVendor 04E8
+    write /sys/class/android_usb/android0/idProduct 6860
+    write /sys/class/android_usb/android0/f_ffs/aliases adb
+    write /sys/class/android_usb/android0/functions adb
+    write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
+    write /sys/class/android_usb/android0/enable 1
+    setprop sys.usb.state adb
+
+on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1
+    setprop sys.usb.state adb

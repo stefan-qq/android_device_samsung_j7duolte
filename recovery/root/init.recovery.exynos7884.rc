@@ -1,0 +1,25 @@
+# Device-specific recovery bring-up for Samsung SM-J720F.
+
+on early-init
+    setprop sys.usb.controller 13600000.dwc3
+    setprop sys.usb.configfs 1
+
+on init
+    # Create only mount points that exist in the J720F PIT/fstab.
+    mkdir /efs 0755 root root
+    mkdir /cpefs 0755 root root
+    mkdir /cache 0770 system cache
+    mkdir /data 0771 system system
+    mkdir /system 0755 root root
+    mkdir /vendor 0755 root root
+    mkdir /odm 0755 root root
+    mkdir /preload 0755 root root
+    mkdir /omr 0755 root root
+
+    # Preserve diagnostic output even when /data is encrypted.
+    mkdir /cache/recovery 0770 system cache
+
+on boot
+    # Force the first source-built image to ADB-only mode.
+    setprop persist.sys.usb.config adb
+    setprop sys.usb.config adb

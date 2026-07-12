@@ -1,0 +1,15 @@
+# Minimal recovery permissions. TWRP runs as root; keep this file narrow.
+
+/dev/graphics/*                                      0660 root graphics
+/dev/input/*                                         0660 root input
+/dev/ttyGS0                                          0660 shell shell
+/dev/android_adb                                     0660 shell shell
+/dev/usb-ffs/adb/ep0                                 0660 shell shell
+/dev/usb-ffs/adb/ep1                                 0660 shell shell
+/dev/usb-ffs/adb/ep2                                 0660 shell shell
+
+/sys/class/android_usb/android0/enable               0660 root shell
+/sys/class/android_usb/android0/idVendor             0660 root shell
+/sys/class/android_usb/android0/idProduct            0660 root shell
+/sys/class/android_usb/android0/functions            0660 root shell
+/sys/class/android_usb/android0/f_ffs/aliases         0660 root shell
