@@ -77,8 +77,13 @@ def cpio_listing(ramdisk: bytes) -> tuple[list[str], str]:
             stdin=cpio_path.open("rb"),
             check=True,
         )
+        # Inspect active init directives only. Comments must not trigger USB
+        # configuration checks such as the forbidden legacy adb.0 test.
         rc_text = "\n".join(
-            path.read_text(errors="ignore")
+            "\n".join(
+                line.split("#", 1)[0].rstrip()
+                for line in path.read_text(errors="ignore").splitlines()
+            )
             for path in sorted(extract.rglob("*.rc"))
             if path.is_file()
         )
