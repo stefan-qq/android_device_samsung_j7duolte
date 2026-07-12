@@ -1,17 +1,20 @@
-/efs          ext4     /dev/block/platform/13500000.dwmmc0/by-name/EFS          flags=display=efs
-/boot         emmc     /dev/block/platform/13500000.dwmmc0/by-name/BOOT         flags=display=boot
-/recovery     emmc     /dev/block/platform/13500000.dwmmc0/by-name/RECOVERY     flags=display=recovery
-/cache        ext4     /dev/block/platform/13500000.dwmmc0/by-name/CACHE        flags=display=cache
-/system       ext4     /dev/block/platform/13500000.dwmmc0/by-name/SYSTEM       flags=display=system
-/data         ext4     /dev/block/platform/13500000.dwmmc0/by-name/USERDATA     flags=display=data
-/cpefs        ext4     /dev/block/platform/13500000.dwmmc0/by-name/CPEFS        flags=display=cpefs
-/carrier      ext4     /dev/block/platform/13500000.dwmmc0/by-name/CARRIER      flags=display=carrier
-/odm          ext4     /dev/block/platform/13500000.dwmmc0/by-name/ODM          flags=display=odm
-/vendor       ext4     /dev/block/platform/13500000.dwmmc0/by-name/VENDOR       flags=display=vendor
-/modem        emmc     /dev/block/platform/13500000.dwmmc0/by-name/RADIO        flags=display=modem
-/misc         emmc     /dev/block/platform/13500000.dwmmc0/by-name/MISC         flags=display=misc
-/sdcard       vfat     /dev/block/mmcblk1p1                                     flags=display=sdcard
-/cp_debug     emmc     /dev/block/platform/13500000.dwmmc0/by-name/CP_DEBUG     flags=display=cp_debug
-/param        emmc     /dev/block/platform/13500000.dwmmc0/by-name/PARAM        flags=display=param
-/preload      ext4     /dev/block/platform/13500000.dwmmc0/by-name/HIDDEN       flags=display=preload
-/misc         emmc     /dev/block/platform/13500000.dwmmc0/by-name/MISC         flags=display=misc
+# Samsung SM-J720F / j7duolte — PIT-backed recovery fstab
+# No external SD entry by design for the first bring-up.
+
+/boot       emmc  /dev/block/platform/13500000.dwmmc0/by-name/BOOT       flags=display=Boot;backup=1
+/recovery   emmc  /dev/block/platform/13500000.dwmmc0/by-name/RECOVERY   flags=display=Recovery;backup=1
+/system     ext4  /dev/block/platform/13500000.dwmmc0/by-name/SYSTEM     flags=display=System;backup=1;wipeingui
+/vendor     ext4  /dev/block/platform/13500000.dwmmc0/by-name/VENDOR     flags=display=Vendor;backup=1;wipeingui
+/odm        ext4  /dev/block/platform/13500000.dwmmc0/by-name/ODM        flags=display=ODM;backup=1;wipeingui
+/data       ext4  /dev/block/platform/13500000.dwmmc0/by-name/USERDATA   flags=display=Data;storage;settingsstorage;backup=1;wipeingui;encryptable=footer;length=-20480
+/cache      ext4  /dev/block/platform/13500000.dwmmc0/by-name/CACHE      flags=display=Cache;backup=1;wipeingui
+/efs        ext4  /dev/block/platform/13500000.dwmmc0/by-name/EFS        flags=display=EFS;backup=1
+/cpefs      ext4  /dev/block/platform/13500000.dwmmc0/by-name/CPEFS      flags=display=CPEFS;backup=1
+/preload    ext4  /dev/block/platform/13500000.dwmmc0/by-name/HIDDEN     flags=display=Preload;backup=1;wipeingui
+/omr        ext4  /dev/block/platform/13500000.dwmmc0/by-name/OMR        flags=display=OMR;backup=1;wipeingui
+
+/modem      emmc  /dev/block/platform/13500000.dwmmc0/by-name/RADIO      flags=display=Modem;backup=1
+/dtbo       emmc  /dev/block/platform/13500000.dwmmc0/by-name/DTBO       flags=display=DTBO;backup=1
+/misc       emmc  /dev/block/platform/13500000.dwmmc0/by-name/MISC       flags=display=Misc
+/param      emmc  /dev/block/platform/13500000.dwmmc0/by-name/PARAM      flags=display=Param;backup=1
+/cp_debug   emmc  /dev/block/platform/13500000.dwmmc0/by-name/CP_DEBUG   flags=display=CP_Debug;backup=1
