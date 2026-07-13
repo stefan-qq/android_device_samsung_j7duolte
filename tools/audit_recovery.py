@@ -51,7 +51,7 @@ def parse_header(blob: bytes) -> dict[str, object]:
     }
 
 
-def cpio_listing(ramdisk: bytes) -> tuple[list[str], str]:
+def cpio_listing(ramdisk: bytes) -> tuple[list[str], dict[str, str]]:
     if not ramdisk.startswith(b"\x1f\x8b"):
         raise ValueError("recovery ramdisk is not gzip-compressed")
     if shutil.which("cpio") is None:
@@ -77,17 +77,17 @@ def cpio_listing(ramdisk: bytes) -> tuple[list[str], str]:
             stdin=cpio_path.open("rb"),
             check=True,
         )
-        # Inspect active init directives only. Comments must not trigger USB
-        # configuration checks such as the forbidden legacy adb.0 test.
-        rc_text = "\n".join(
-            "\n".join(
+        # Inspect every generated rc file, including the root /init.rc. Strip
+        # comments so disabled examples cannot satisfy or trip active checks.
+        rc_files = {
+            str(path.relative_to(extract)): "\n".join(
                 line.split("#", 1)[0].rstrip()
                 for line in path.read_text(errors="ignore").splitlines()
             )
             for path in sorted(extract.rglob("*.rc"))
             if path.is_file()
-        )
-        return listing, rc_text
+        }
+        return listing, rc_files
 
 
 def main() -> int:
@@ -137,10 +137,23 @@ def main() -> int:
         errors.append("stock Samsung recovery trailer is missing")
 
     try:
-        listing, rc_text = cpio_listing(ramdisk)
+        listing, rc_files = cpio_listing(ramdisk)
     except Exception as exc:  # audit must report rather than silently skip
         errors.append(f"ramdisk inspection failed: {exc}")
-        listing, rc_text = [], ""
+        listing, rc_files = [], {}
+
+    rc_text = "\n".join(rc_files.values())
+    rc_lines = [line.strip() for line in rc_text.splitlines() if line.strip()]
+    root_init_lines = [
+        line.strip()
+        for line in rc_files.get("init.rc", "").splitlines()
+        if line.strip()
+    ]
+    usb_init_lines = [
+        line.strip()
+        for line in rc_files.get("init.recovery.usb.rc", "").splitlines()
+        if line.strip()
+    ]
 
     required_any = {
         "TWRP recovery executable": {"sbin/recovery", "system/bin/recovery"},
@@ -159,20 +172,77 @@ def main() -> int:
         if not normalized.intersection(choices):
             errors.append(f"missing {label}: expected one of {sorted(choices)}")
 
-    if "functions/adb.0" in rc_text:
+    if root_init_lines.count("start set_permissive") != 2:
+        errors.append(
+            "root /init.rc must start set_permissive exactly twice "
+            "(during init and boot)"
+        )
+    for required_line in (
+        "mkdir /dev/pts 0755 root root",
+        "mount devpts devpts /dev/pts",
+    ):
+        if required_line not in root_init_lines:
+            errors.append(f"root /init.rc is missing: {required_line}")
+
+    for forbidden_line in (
+        "setprop service.adb.root 1",
+        "write /sys/class/android_usb/android0/enable 1",
+    ):
+        if forbidden_line in rc_lines:
+            errors.append(f"generated ramdisk contains forbidden action: {forbidden_line}")
+
+    cleanup_line = "write /sys/class/android_usb/android0/enable 0"
+    if rc_lines.count(cleanup_line) != 1 or usb_init_lines.count(cleanup_line) != 1:
+        errors.append(
+            "expected exactly one android0 enable=0 cleanup write, owned by "
+            "init.recovery.usb.rc"
+        )
+
+    ffs_prefix = "mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb"
+    ffs_creations = [line for line in rc_lines if line.startswith(ffs_prefix)]
+    usb_ffs_creations = [
+        line for line in usb_init_lines if line.startswith(ffs_prefix)
+    ]
+    if len(ffs_creations) != 1 or len(usb_ffs_creations) != 1:
+        errors.append(
+            "expected exactly one ffs.adb function creation, owned by "
+            "init.recovery.usb.rc"
+        )
+
+    if any("functions/adb.0" in line for line in rc_lines):
         errors.append("legacy adb.0 gadget found; first bring-up must use only ffs.adb")
-    if "functions/ffs.adb" not in rc_text:
-        errors.append("FunctionFS ADB gadget is missing")
+
+    mtp_markers = (
+        "/functions/mtp",
+        "sys.usb.config=mtp",
+        "setprop sys.usb.config mtp",
+        "start mtpd",
+    )
+    if any(marker in line for marker in mtp_markers for line in rc_lines):
+        errors.append("MTP gadget configuration found; first bring-up must remain ADB-only")
+
+    udc_bind = "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}"
+    if rc_lines.count(udc_bind) != 1 or usb_init_lines.count(udc_bind) != 1:
+        errors.append(
+            "expected exactly one active UDC bind to ${sys.usb.controller}, "
+            "owned by init.recovery.usb.rc"
+        )
+
+    controller_line = "setprop sys.usb.controller 13600000.dwc3"
+    if rc_lines.count(controller_line) != 1:
+        errors.append("USB controller 13600000.dwc3 must be set exactly once")
+
     if "/sys/class/android_usb/android0/f_ffs/aliases" not in rc_text:
         errors.append("Samsung android_usb FunctionFS alias gate is missing")
-    if "13600000.dwc3" not in rc_text:
-        errors.append("USB controller 13600000.dwc3 is missing")
 
     if args.tree:
         board = (args.tree / "BoardConfig.mk").read_text(errors="ignore")
         if "BOARD_PREBUILT_RECOVERY_RAMDISK" in board:
             errors.append("device tree still enables BOARD_PREBUILT_RECOVERY_RAMDISK")
-        for obsolete in ("recovery/root/init.rc", "recovery/root/ueventd.rc", "recovery/root/sepolicy_version"):
+        device_init = args.tree / "recovery/root/init.rc"
+        if not device_init.is_file():
+            errors.append("device-owned recovery/root/init.rc is missing")
+        for obsolete in ("recovery/root/ueventd.rc", "recovery/root/sepolicy_version"):
             if (args.tree / obsolete).exists():
                 errors.append(f"obsolete top-level override still exists: {obsolete}")
         stale_hardware_files = (
