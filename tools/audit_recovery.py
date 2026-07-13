@@ -65,7 +65,9 @@ def parse_header(blob: bytes) -> dict[str, object]:
     }
 
 
-def cpio_listing(ramdisk: bytes) -> tuple[list[str], dict[str, str]]:
+def cpio_listing(
+    ramdisk: bytes,
+) -> tuple[list[str], dict[str, str], dict[str, bytes]]:
     if not ramdisk.startswith(b"\x1f\x8b"):
         raise ValueError("recovery ramdisk is not gzip-compressed")
 
@@ -108,7 +110,16 @@ def cpio_listing(ramdisk: bytes) -> tuple[list[str], dict[str, str]]:
             if path.is_file()
         }
 
-        return listing, rc_files
+        payloads: dict[str, bytes] = {}
+        for relative in (
+            "sbin/recovery",
+            "sbin/libminuitwrp.so",
+        ):
+            candidate = extract / relative
+            if candidate.is_file():
+                payloads[relative] = candidate.read_bytes()
+
+        return listing, rc_files, payloads
 
 
 def main() -> int:
@@ -181,11 +192,11 @@ def main() -> int:
         errors.append("stock Samsung recovery trailer is missing")
 
     try:
-        listing, rc_files = cpio_listing(ramdisk)
+        listing, rc_files, payloads = cpio_listing(ramdisk)
     except Exception as exc:
         # The audit must report ramdisk failures rather than silently skip them.
         errors.append(f"ramdisk inspection failed: {exc}")
-        listing, rc_files = [], {}
+        listing, rc_files, payloads = [], {}, {}
 
     rc_text = "\n".join(rc_files.values())
     rc_lines = [
@@ -250,6 +261,24 @@ def main() -> int:
                 f"missing {label}: expected one of {sorted(choices)}"
             )
 
+    recovery_binary = payloads.get("sbin/recovery", b"")
+    minui_binary = payloads.get("sbin/libminuitwrp.so", b"")
+    brightness_path = (
+        b"/sys/devices/14800000.dsim/backlight/panel/brightness"
+    )
+
+    if brightness_path not in recovery_binary:
+        errors.append(
+            "finished sbin/recovery does not contain the J720F panel "
+            "brightness path"
+        )
+
+    if b"setting DRM_FORMAT_ABGR8888" not in minui_binary:
+        errors.append(
+            "finished libminuitwrp.so does not contain ABGR_8888 "
+            "framebuffer support"
+        )
+
     service_init_lines = [
         line.strip()
         for line in rc_files.get(
@@ -273,10 +302,10 @@ def main() -> int:
             "diagnostic service rc does not define /sbin/recovery"
         )
 
-    if "disabled" not in service_init_lines:
+    if "disabled" in service_init_lines:
         errors.append(
-            "ADB-first diagnostic image must disable automatic "
-            "recovery startup"
+            "recovery service is still disabled; this build must start "
+            "/sbin/recovery normally"
         )
 
     if hardware_init_lines.count("start j720f_diag") != 1:
@@ -307,28 +336,46 @@ def main() -> int:
                 f"root /init.rc is missing: {required_line}"
             )
 
-    for forbidden_line in (
-        "setprop service.adb.root 1",
-        "write /sys/class/android_usb/android0/enable 1",
-    ):
-        if forbidden_line in rc_lines:
-            errors.append(
-                f"generated ramdisk contains forbidden action: "
-                f"{forbidden_line}"
-            )
+    forbidden_line = "setprop service.adb.root 1"
+    if forbidden_line in rc_lines:
+        errors.append(
+            f"generated ramdisk contains forbidden action: "
+            f"{forbidden_line}"
+        )
 
-    cleanup_line = (
-        "write /sys/class/android_usb/android0/enable 0"
-    )
+    disable_line = "write /sys/class/android_usb/android0/enable 0"
+    enable_line = "write /sys/class/android_usb/android0/enable 1"
 
     if (
-        rc_lines.count(cleanup_line) != 1
-        or usb_init_lines.count(cleanup_line) != 1
+        rc_lines.count(disable_line) != 2
+        or usb_init_lines.count(disable_line) != 2
     ):
         errors.append(
-            "expected exactly one android0 enable=0 cleanup write, "
-            "owned by init.recovery.usb.rc"
+            "expected exactly two android0 enable=0 writes, owned by "
+            "init.recovery.usb.rc"
         )
+
+    if (
+        rc_lines.count(enable_line) != 1
+        or usb_init_lines.count(enable_line) != 1
+    ):
+        errors.append(
+            "expected exactly one stock Samsung android0 enable=1 "
+            "bridge action, owned by init.recovery.usb.rc"
+        )
+
+    for required_bridge_line in (
+        "write /sys/class/android_usb/android0/f_ffs/aliases adb",
+        "write /sys/class/android_usb/android0/functions adb",
+    ):
+        if (
+            rc_lines.count(required_bridge_line) != 1
+            or usb_init_lines.count(required_bridge_line) != 1
+        ):
+            errors.append(
+                "missing or duplicated stock Samsung USB bridge action: "
+                f"{required_bridge_line}"
+            )
 
     ffs_prefix = (
         "mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb"
@@ -416,6 +463,18 @@ def main() -> int:
         board = (
             args.tree / "BoardConfig.mk"
         ).read_text(errors="ignore")
+
+        for required_board_line in (
+            'TARGET_RECOVERY_PIXEL_FORMAT := "ABGR_8888"',
+            'TW_BRIGHTNESS_PATH := "/sys/devices/14800000.dsim/backlight/panel/brightness"',
+            "TW_MAX_BRIGHTNESS := 255",
+            "TW_DEFAULT_BRIGHTNESS := 153",
+        ):
+            if required_board_line not in board:
+                errors.append(
+                    "BoardConfig.mk is missing known-good display setting: "
+                    f"{required_board_line}"
+                )
 
         if "BOARD_PREBUILT_RECOVERY_RAMDISK" in board:
             errors.append(
