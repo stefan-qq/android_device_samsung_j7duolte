@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict audit for the first source-built SM-J720F recovery image."""
+"""Strict audit for the SM-J720F ADB-first diagnostic recovery image."""
 
 from __future__ import annotations
 
@@ -32,10 +32,24 @@ def digest(data: bytes) -> str:
 def parse_header(blob: bytes) -> dict[str, object]:
     if blob[:8] != b"ANDROID!":
         raise ValueError("not a legacy Android boot image")
+
     fields = struct.unpack_from("<10I", blob, 8)
-    kernel_size, kernel_addr, ramdisk_size, ramdisk_addr, second_size, second_addr, tags_addr, page_size, dt_size, _unused = fields
+    (
+        kernel_size,
+        kernel_addr,
+        ramdisk_size,
+        ramdisk_addr,
+        second_size,
+        second_addr,
+        tags_addr,
+        page_size,
+        dt_size,
+        _unused,
+    ) = fields
+
     name = blob[48:64].split(b"\0", 1)[0].decode("ascii", "replace")
     cmdline = blob[64:576].split(b"\0", 1)[0].decode("ascii", "replace")
+
     return {
         "kernel_size": kernel_size,
         "kernel_addr": kernel_addr,
@@ -54,12 +68,15 @@ def parse_header(blob: bytes) -> dict[str, object]:
 def cpio_listing(ramdisk: bytes) -> tuple[list[str], dict[str, str]]:
     if not ramdisk.startswith(b"\x1f\x8b"):
         raise ValueError("recovery ramdisk is not gzip-compressed")
+
     if shutil.which("cpio") is None:
         raise ValueError("cpio is required for ramdisk audit")
+
     with tempfile.TemporaryDirectory(prefix="j720f-audit-") as temp:
         root = Path(temp)
         cpio_path = root / "ramdisk.cpio"
         cpio_path.write_bytes(gzip.decompress(ramdisk))
+
         listing = subprocess.run(
             ["cpio", "-it"],
             cwd=root,
@@ -69,14 +86,17 @@ def cpio_listing(ramdisk: bytes) -> tuple[list[str], dict[str, str]]:
             text=True,
             check=True,
         ).stdout.splitlines()
+
         extract = root / "root"
         extract.mkdir()
+
         subprocess.run(
             ["cpio", "-idm", "--quiet"],
             cwd=extract,
             stdin=cpio_path.open("rb"),
             check=True,
         )
+
         # Inspect every generated rc file, including the root /init.rc. Strip
         # comments so disabled examples cannot satisfy or trip active checks.
         rc_files = {
@@ -87,19 +107,26 @@ def cpio_listing(ramdisk: bytes) -> tuple[list[str], dict[str, str]]:
             for path in sorted(extract.rglob("*.rc"))
             if path.is_file()
         }
+
         return listing, rc_files
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("image", type=Path)
-    parser.add_argument("--out-dir", type=Path, default=Path("recovery-audit"))
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=Path("recovery-audit"),
+    )
     parser.add_argument("--tree", type=Path)
     args = parser.parse_args()
 
     errors: list[str] = []
     warnings: list[str] = []
+
     blob = args.image.read_bytes()
+
     try:
         hdr = parse_header(blob)
     except ValueError as exc:
@@ -107,8 +134,10 @@ def main() -> int:
 
     if len(blob) > LIMIT:
         errors.append(f"image exceeds PIT limit: {len(blob)} > {LIMIT}")
+
     if hdr["page_size"] != PAGE:
         errors.append(f"page size {hdr['page_size']} != {PAGE}")
+
     expected = {
         "kernel_addr": 0x10008000,
         "ramdisk_addr": 0x11000000,
@@ -117,49 +146,91 @@ def main() -> int:
         "name": "SRPRA09A005RU",
         "dt_size": 628736,
     }
+
     for key, value in expected.items():
         if hdr[key] != value:
-            errors.append(f"header {key}={hdr[key]!r}; expected {value!r}")
+            errors.append(
+                f"header {key}={hdr[key]!r}; expected {value!r}"
+            )
 
     pos = PAGE
+
     kernel = blob[pos : pos + int(hdr["kernel_size"])]
     pos = align(pos + int(hdr["kernel_size"]), PAGE)
+
     ramdisk = blob[pos : pos + int(hdr["ramdisk_size"])]
     pos = align(pos + int(hdr["ramdisk_size"]), PAGE)
+
     pos = align(pos + int(hdr["second_size"]), PAGE)
     dt = blob[pos : pos + int(hdr["dt_size"])]
 
     if digest(kernel) != EXPECTED_KERNEL_SHA256:
-        errors.append("kernel hash differs from stock J720F Android 10 kernel")
+        errors.append(
+            "kernel hash differs from stock J720F Android 10 kernel"
+        )
+
     if digest(dt) != EXPECTED_DT_SHA256:
-        errors.append("DT hash differs from exact stock J720F DT payload")
-    if not blob.endswith(TRAILER_MARKER) and TRAILER_MARKER not in blob[-2048:]:
+        errors.append(
+            "DT hash differs from exact stock J720F DT payload"
+        )
+
+    if (
+        not blob.endswith(TRAILER_MARKER)
+        and TRAILER_MARKER not in blob[-2048:]
+    ):
         errors.append("stock Samsung recovery trailer is missing")
 
     try:
         listing, rc_files = cpio_listing(ramdisk)
-    except Exception as exc:  # audit must report rather than silently skip
+    except Exception as exc:
+        # The audit must report ramdisk failures rather than silently skip them.
         errors.append(f"ramdisk inspection failed: {exc}")
         listing, rc_files = [], {}
 
     rc_text = "\n".join(rc_files.values())
-    rc_lines = [line.strip() for line in rc_text.splitlines() if line.strip()]
+    rc_lines = [
+        line.strip()
+        for line in rc_text.splitlines()
+        if line.strip()
+    ]
+
     root_init_lines = [
         line.strip()
         for line in rc_files.get("init.rc", "").splitlines()
         if line.strip()
     ]
+
     usb_init_lines = [
         line.strip()
-        for line in rc_files.get("init.recovery.usb.rc", "").splitlines()
+        for line in rc_files.get(
+            "init.recovery.usb.rc",
+            "",
+        ).splitlines()
         if line.strip()
     ]
 
     required_any = {
-        "TWRP recovery executable": {"sbin/recovery", "system/bin/recovery"},
-        "adbd": {"sbin/adbd", "system/bin/adbd"},
-        "recovery fstab": {"etc/recovery.fstab", "system/etc/recovery.fstab"},
-        "device USB rc": {"init.recovery.usb.rc"},
+        "TWRP recovery executable": {
+            "sbin/recovery",
+            "system/bin/recovery",
+        },
+        "adbd": {
+            "sbin/adbd",
+            "system/bin/adbd",
+        },
+        "recovery fstab": {
+            "etc/recovery.fstab",
+            "system/etc/recovery.fstab",
+        },
+        "device USB rc": {
+            "init.recovery.usb.rc",
+        },
+        "device recovery service rc": {
+            "init.recovery.service.rc",
+        },
+        "ADB-first diagnostic script": {
+            "sbin/j720f_diag.sh",
+        },
         "hardware init rc": {
             "init.recovery.samsungexynos7885.rc",
         },
@@ -167,50 +238,131 @@ def main() -> int:
             "ueventd.samsungexynos7885.rc",
         },
     }
-    normalized = {item.lstrip("./") for item in listing}
+
+    normalized = {
+        item.lstrip("./")
+        for item in listing
+    }
+
     for label, choices in required_any.items():
         if not normalized.intersection(choices):
-            errors.append(f"missing {label}: expected one of {sorted(choices)}")
+            errors.append(
+                f"missing {label}: expected one of {sorted(choices)}"
+            )
+
+    service_init_lines = [
+        line.strip()
+        for line in rc_files.get(
+            "init.recovery.service.rc",
+            "",
+        ).splitlines()
+        if line.strip()
+    ]
+
+    hardware_init_lines = [
+        line.strip()
+        for line in rc_files.get(
+            "init.recovery.samsungexynos7885.rc",
+            "",
+        ).splitlines()
+        if line.strip()
+    ]
+
+    if "service recovery /sbin/recovery" not in service_init_lines:
+        errors.append(
+            "diagnostic service rc does not define /sbin/recovery"
+        )
+
+    if "disabled" not in service_init_lines:
+        errors.append(
+            "ADB-first diagnostic image must disable automatic "
+            "recovery startup"
+        )
+
+    if hardware_init_lines.count("start j720f_diag") != 1:
+        errors.append(
+            "hardware init must start j720f_diag exactly once"
+        )
+
+    if not any(
+        line.startswith("service j720f_diag ")
+        for line in hardware_init_lines
+    ):
+        errors.append(
+            "hardware init does not define the j720f_diag service"
+        )
 
     if root_init_lines.count("start set_permissive") != 2:
         errors.append(
             "root /init.rc must start set_permissive exactly twice "
             "(during init and boot)"
         )
+
     for required_line in (
         "mkdir /dev/pts 0755 root root",
         "mount devpts devpts /dev/pts",
     ):
         if required_line not in root_init_lines:
-            errors.append(f"root /init.rc is missing: {required_line}")
+            errors.append(
+                f"root /init.rc is missing: {required_line}"
+            )
 
     for forbidden_line in (
         "setprop service.adb.root 1",
         "write /sys/class/android_usb/android0/enable 1",
     ):
         if forbidden_line in rc_lines:
-            errors.append(f"generated ramdisk contains forbidden action: {forbidden_line}")
+            errors.append(
+                f"generated ramdisk contains forbidden action: "
+                f"{forbidden_line}"
+            )
 
-    cleanup_line = "write /sys/class/android_usb/android0/enable 0"
-    if rc_lines.count(cleanup_line) != 1 or usb_init_lines.count(cleanup_line) != 1:
+    cleanup_line = (
+        "write /sys/class/android_usb/android0/enable 0"
+    )
+
+    if (
+        rc_lines.count(cleanup_line) != 1
+        or usb_init_lines.count(cleanup_line) != 1
+    ):
         errors.append(
-            "expected exactly one android0 enable=0 cleanup write, owned by "
-            "init.recovery.usb.rc"
+            "expected exactly one android0 enable=0 cleanup write, "
+            "owned by init.recovery.usb.rc"
         )
 
-    ffs_prefix = "mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb"
-    ffs_creations = [line for line in rc_lines if line.startswith(ffs_prefix)]
-    usb_ffs_creations = [
-        line for line in usb_init_lines if line.startswith(ffs_prefix)
+    ffs_prefix = (
+        "mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb"
+    )
+
+    ffs_creations = [
+        line
+        for line in rc_lines
+        if line.startswith(ffs_prefix)
     ]
-    if len(ffs_creations) != 1 or len(usb_ffs_creations) != 1:
+
+    usb_ffs_creations = [
+        line
+        for line in usb_init_lines
+        if line.startswith(ffs_prefix)
+    ]
+
+    if (
+        len(ffs_creations) != 1
+        or len(usb_ffs_creations) != 1
+    ):
         errors.append(
-            "expected exactly one ffs.adb function creation, owned by "
-            "init.recovery.usb.rc"
+            "expected exactly one ffs.adb function creation, "
+            "owned by init.recovery.usb.rc"
         )
 
-    if any("functions/adb.0" in line for line in rc_lines):
-        errors.append("legacy adb.0 gadget found; first bring-up must use only ffs.adb")
+    if any(
+        "functions/adb.0" in line
+        for line in rc_lines
+    ):
+        errors.append(
+            "legacy adb.0 gadget found; first bring-up must use "
+            "only ffs.adb"
+        )
 
     mtp_markers = (
         "/functions/mtp",
@@ -218,33 +370,76 @@ def main() -> int:
         "setprop sys.usb.config mtp",
         "start mtpd",
     )
-    if any(marker in line for marker in mtp_markers for line in rc_lines):
-        errors.append("MTP gadget configuration found; first bring-up must remain ADB-only")
 
-    udc_bind = "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}"
-    if rc_lines.count(udc_bind) != 1 or usb_init_lines.count(udc_bind) != 1:
+    if any(
+        marker in line
+        for marker in mtp_markers
+        for line in rc_lines
+    ):
         errors.append(
-            "expected exactly one active UDC bind to ${sys.usb.controller}, "
-            "owned by init.recovery.usb.rc"
+            "MTP gadget configuration found; first bring-up "
+            "must remain ADB-only"
         )
 
-    controller_line = "setprop sys.usb.controller 13600000.dwc3"
-    if rc_lines.count(controller_line) != 1:
-        errors.append("USB controller 13600000.dwc3 must be set exactly once")
+    udc_bind = (
+        "write /sys/kernel/config/usb_gadget/g1/UDC "
+        "${sys.usb.controller}"
+    )
 
-    if "/sys/class/android_usb/android0/f_ffs/aliases" not in rc_text:
-        errors.append("Samsung android_usb FunctionFS alias gate is missing")
+    if (
+        rc_lines.count(udc_bind) != 1
+        or usb_init_lines.count(udc_bind) != 1
+    ):
+        errors.append(
+            "expected exactly one active UDC bind to "
+            "${sys.usb.controller}, owned by init.recovery.usb.rc"
+        )
+
+    controller_line = (
+        "setprop sys.usb.controller 13600000.dwc3"
+    )
+
+    if rc_lines.count(controller_line) != 1:
+        errors.append(
+            "USB controller 13600000.dwc3 must be set exactly once"
+        )
+
+    if (
+        "/sys/class/android_usb/android0/f_ffs/aliases"
+        not in rc_text
+    ):
+        errors.append(
+            "Samsung android_usb FunctionFS alias gate is missing"
+        )
 
     if args.tree:
-        board = (args.tree / "BoardConfig.mk").read_text(errors="ignore")
+        board = (
+            args.tree / "BoardConfig.mk"
+        ).read_text(errors="ignore")
+
         if "BOARD_PREBUILT_RECOVERY_RAMDISK" in board:
-            errors.append("device tree still enables BOARD_PREBUILT_RECOVERY_RAMDISK")
+            errors.append(
+                "device tree still enables "
+                "BOARD_PREBUILT_RECOVERY_RAMDISK"
+            )
+
         device_init = args.tree / "recovery/root/init.rc"
+
         if not device_init.is_file():
-            errors.append("device-owned recovery/root/init.rc is missing")
-        for obsolete in ("recovery/root/ueventd.rc", "recovery/root/sepolicy_version"):
+            errors.append(
+                "device-owned recovery/root/init.rc is missing"
+            )
+
+        for obsolete in (
+            "recovery/root/ueventd.rc",
+            "recovery/root/sepolicy_version",
+        ):
             if (args.tree / obsolete).exists():
-                errors.append(f"obsolete top-level override still exists: {obsolete}")
+                errors.append(
+                    f"obsolete top-level override still exists: "
+                    f"{obsolete}"
+                )
+
         stale_hardware_files = (
             "recovery/root/init.recovery.exynos7884.rc",
             "recovery/root/ueventd.exynos7884.rc",
@@ -256,9 +451,9 @@ def main() -> int:
                     f"stale hardware-specific rc remains: {stale}"
                 )
 
-        device_mk = (args.tree / "device.mk").read_text(
-            errors="ignore"
-        )
+        device_mk = (
+            args.tree / "device.mk"
+        ).read_text(errors="ignore")
 
         if "ro.hardware=samsungexynos7885" not in device_mk:
             errors.append(
@@ -266,13 +461,20 @@ def main() -> int:
                 "ro.hardware=samsungexynos7885"
             )
 
-        if b"androidboot.hardware=samsungexynos7885" not in dt:
+        if (
+            b"androidboot.hardware=samsungexynos7885"
+            not in dt
+        ):
             errors.append(
                 "DT does not advertise stock "
                 "samsungexynos7885 hardware name"
             )
 
-    args.out_dir.mkdir(parents=True, exist_ok=True)
+    args.out_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
     report = {
         "image": str(args.image),
         "size": len(blob),
@@ -285,10 +487,27 @@ def main() -> int:
         "errors": errors,
         "warnings": warnings,
     }
-    (args.out_dir / "audit.json").write_text(json.dumps(report, indent=2) + "\n")
-    (args.out_dir / "ramdisk-files.txt").write_text("\n".join(listing) + "\n")
-    (args.out_dir / "sha256.txt").write_text(f"{digest(blob)}  {args.image.name}\n")
+
+    (
+        args.out_dir / "audit.json"
+    ).write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+
+    (
+        args.out_dir / "ramdisk-files.txt"
+    ).write_text(
+        "\n".join(listing) + "\n"
+    )
+
+    (
+        args.out_dir / "sha256.txt"
+    ).write_text(
+        f"{digest(blob)}  {args.image.name}\n"
+    )
+
     print(json.dumps(report, indent=2))
+
     return 1 if errors else 0
 
 
