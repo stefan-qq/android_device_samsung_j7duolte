@@ -1,50 +1,57 @@
-# Samsung Exynos7884 recovery USB: one FunctionFS ADB gadget only.
-# Legacy ConfigFS ADB and MTP functions are intentionally excluded.
+# Samsung SM-J720F recovery USB.
+#
+# The stock Android 10 recovery uses a Samsung-specific bridge: it creates one
+# ConfigFS FunctionFS ADB function, then programs android_usb aliases/functions
+# and enables android0 after adbd reports sys.usb.ffs.ready=1.
+#
+# Do not add functions/adb.0. That would create the duplicate ADB interfaces
+# seen in the v18 hybrid image.
+
+on early-init
+    setprop sys.usb.configfs 1
+    setprop sys.usb.controller 13600000.dwc3
 
 on fs
     mount configfs none /sys/kernel/config
 
     mkdir /sys/kernel/config/usb_gadget/g1 0770 shell shell
-    write /sys/kernel/config/usb_gadget/g1/idVendor 0x04e8
-    write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
-    write /sys/kernel/config/usb_gadget/g1/bcdDevice 0x0404
-    write /sys/kernel/config/usb_gadget/g1/bcdUSB 0x0200
-
     mkdir /sys/kernel/config/usb_gadget/g1/strings/0x409 0770 shell shell
+    mkdir /sys/kernel/config/usb_gadget/g1/configs/c.1 0770 shell shell
+    mkdir /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409 0770 shell shell
+    mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
+
     write /sys/kernel/config/usb_gadget/g1/strings/0x409/serialnumber ${ro.serialno}
     write /sys/kernel/config/usb_gadget/g1/strings/0x409/manufacturer SAMSUNG
     write /sys/kernel/config/usb_gadget/g1/strings/0x409/product SAMSUNG_Android
+    write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration ADB
+    write /sys/kernel/config/usb_gadget/g1/configs/c.1/MaxPower 0x3f
 
-    mkdir /sys/kernel/config/usb_gadget/g1/configs/b.1 0770 shell shell
-    mkdir /sys/kernel/config/usb_gadget/g1/configs/b.1/strings/0x409 0770 shell shell
-    write /sys/kernel/config/usb_gadget/g1/configs/b.1/strings/0x409/configuration adb
-    write /sys/kernel/config/usb_gadget/g1/configs/b.1/MaxPower 0x30
+    symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb
 
-    mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
-    symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb \
-        /sys/kernel/config/usb_gadget/g1/configs/b.1/f1
-
-
-# The generic TWRP init may briefly enable Samsung's legacy android_usb
-# gadget because this is an eng build. Disable it before using ConfigFS.
 on boot
-    write /sys/class/android_usb/android0/enable 0
+    # Force a real property transition even though prop.default already says
+    # adb, so all USB actions execute on every recovery boot.
     setprop sys.usb.config none
 
-on property:sys.usb.config=none
+on property:sys.usb.config=none && property:sys.usb.configfs=1
+    write /sys/class/android_usb/android0/enable 0
     write /sys/kernel/config/usb_gadget/g1/UDC ""
     stop adbd
     setprop sys.usb.ffs.ready 0
     setprop sys.usb.state none
 
-# Perform a deliberate property transition.
 on property:sys.usb.state=none
     setprop sys.usb.config adb
 
 on property:sys.usb.config=adb
     start adbd
 
-# Bind only after adbd has opened the FunctionFS endpoints.
-on property:sys.usb.ffs.ready=1 && property:sys.usb.config=adb
+on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/kernel/config/usb_gadget/g1/idVendor 0x04e8
+    write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
+    write /sys/class/android_usb/android0/f_ffs/aliases adb
+    write /sys/class/android_usb/android0/functions adb
     write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
+    write /sys/class/android_usb/android0/enable 1
     setprop sys.usb.state adb
