@@ -1,6 +1,0 @@
-on boot
-
-# Start TWRP normally. The separate j720f_diag service remains active so a
-# working ADB connection can capture the early boot and graphics state.
-service recovery /sbin/recovery
-    seclabel u:r:recovery:s0

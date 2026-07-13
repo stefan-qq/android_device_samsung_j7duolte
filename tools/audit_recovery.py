@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict audit for the SM-J720F ADB-first diagnostic recovery image."""
+"""Audit the source-built donor-era TWRP 3.3 image for SM-J720F."""
 
 from __future__ import annotations
 
@@ -33,7 +33,6 @@ def parse_header(blob: bytes) -> dict[str, object]:
     if blob[:8] != b"ANDROID!":
         raise ValueError("not a legacy Android boot image")
 
-    fields = struct.unpack_from("<10I", blob, 8)
     (
         kernel_size,
         kernel_addr,
@@ -45,10 +44,7 @@ def parse_header(blob: bytes) -> dict[str, object]:
         page_size,
         dt_size,
         _unused,
-    ) = fields
-
-    name = blob[48:64].split(b"\0", 1)[0].decode("ascii", "replace")
-    cmdline = blob[64:576].split(b"\0", 1)[0].decode("ascii", "replace")
+    ) = struct.unpack_from("<10I", blob, 8)
 
     return {
         "kernel_size": kernel_size,
@@ -60,526 +56,204 @@ def parse_header(blob: bytes) -> dict[str, object]:
         "tags_addr": tags_addr,
         "page_size": page_size,
         "dt_size": dt_size,
-        "name": name,
-        "cmdline": cmdline,
+        "name": blob[48:64].split(b"\0", 1)[0].decode("ascii", "replace"),
+        "cmdline": blob[64:576].split(b"\0", 1)[0].decode("ascii", "replace"),
     }
 
 
-def cpio_listing(
-    ramdisk: bytes,
-) -> tuple[list[str], dict[str, str], dict[str, bytes]]:
+def extract_ramdisk(ramdisk: bytes) -> tuple[list[str], dict[str, bytes]]:
     if not ramdisk.startswith(b"\x1f\x8b"):
-        raise ValueError("recovery ramdisk is not gzip-compressed")
-
+        raise ValueError("ramdisk is not gzip-compressed")
     if shutil.which("cpio") is None:
-        raise ValueError("cpio is required for ramdisk audit")
+        raise ValueError("cpio is required")
 
-    with tempfile.TemporaryDirectory(prefix="j720f-audit-") as temp:
-        root = Path(temp)
-        cpio_path = root / "ramdisk.cpio"
-        cpio_path.write_bytes(gzip.decompress(ramdisk))
+    with tempfile.TemporaryDirectory(prefix="j720f-legacy-audit-") as temp:
+        base = Path(temp)
+        cpio_data = gzip.decompress(ramdisk)
+        cpio_path = base / "ramdisk.cpio"
+        cpio_path.write_bytes(cpio_data)
 
         listing = subprocess.run(
             ["cpio", "-it"],
-            cwd=root,
-            stdin=cpio_path.open("rb"),
+            cwd=base,
+            input=cpio_data,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
             check=True,
-        ).stdout.splitlines()
+        ).stdout.decode(errors="replace").splitlines()
 
-        extract = root / "root"
-        extract.mkdir()
-
+        root = base / "root"
+        root.mkdir()
         subprocess.run(
             ["cpio", "-idm", "--quiet"],
-            cwd=extract,
-            stdin=cpio_path.open("rb"),
+            cwd=root,
+            input=cpio_data,
             check=True,
         )
 
-        # Inspect every generated rc file, including the root /init.rc. Strip
-        # comments so disabled examples cannot satisfy or trip active checks.
-        rc_files = {
-            str(path.relative_to(extract)): "\n".join(
-                line.split("#", 1)[0].rstrip()
-                for line in path.read_text(errors="ignore").splitlines()
-            )
-            for path in sorted(extract.rglob("*.rc"))
-            if path.is_file()
-        }
-
         payloads: dict[str, bytes] = {}
         for relative in (
+            "init",
+            "default.prop",
+            "etc/recovery.fstab",
+            "fstab.samsungexynos7885",
+            "init.recovery.service.rc",
+            "init.recovery.usb.rc",
+            "ueventd.samsungexynos7885.rc",
             "sbin/recovery",
+            "sbin/adbd",
             "sbin/libminuitwrp.so",
         ):
-            candidate = extract / relative
-            if candidate.is_file():
-                payloads[relative] = candidate.read_bytes()
+            path = root / relative
+            if path.is_file():
+                payloads[relative] = path.read_bytes()
 
-        return listing, rc_files, payloads
+        return listing, payloads
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("image", type=Path)
-    parser.add_argument(
-        "--out-dir",
-        type=Path,
-        default=Path("recovery-audit"),
-    )
-    parser.add_argument("--tree", type=Path)
+    parser.add_argument("--tree", type=Path, required=True)
+    parser.add_argument("--out-dir", type=Path, required=True)
     args = parser.parse_args()
 
     errors: list[str] = []
     warnings: list[str] = []
-
     blob = args.image.read_bytes()
 
     try:
-        hdr = parse_header(blob)
+        header = parse_header(blob)
     except ValueError as exc:
         raise SystemExit(str(exc))
 
     if len(blob) > LIMIT:
         errors.append(f"image exceeds PIT limit: {len(blob)} > {LIMIT}")
 
-    if hdr["page_size"] != PAGE:
-        errors.append(f"page size {hdr['page_size']} != {PAGE}")
-
-    cmdline_tokens = str(hdr["cmdline"]).split()
-
-    if "androidboot.selinux=permissive" not in cmdline_tokens:
-        errors.append(
-            "recovery command line is missing "
-            "androidboot.selinux=permissive"
-        )
-
-    if "enforcing=0" not in cmdline_tokens:
-        errors.append(
-            "recovery command line is missing enforcing=0"
-        )
-
-    expected = {
+    expected_header = {
         "kernel_addr": 0x10008000,
         "ramdisk_addr": 0x11000000,
         "second_addr": 0x10F00000,
         "tags_addr": 0x10000100,
-        "name": "SRPRA09A005RU",
+        "page_size": PAGE,
         "dt_size": 628736,
+        "name": "SRPRA09A005RU",
     }
+    for key, expected in expected_header.items():
+        if header[key] != expected:
+            errors.append(f"header {key}={header[key]!r}; expected {expected!r}")
 
-    for key, value in expected.items():
-        if hdr[key] != value:
-            errors.append(
-                f"header {key}={hdr[key]!r}; expected {value!r}"
-            )
+    cmdline = str(header["cmdline"]).split()
+    for token in ("androidboot.selinux=permissive", "enforcing=0"):
+        if token not in cmdline:
+            errors.append(f"kernel command line is missing {token}")
 
     pos = PAGE
-
-    kernel = blob[pos : pos + int(hdr["kernel_size"])]
-    pos = align(pos + int(hdr["kernel_size"]), PAGE)
-
-    ramdisk = blob[pos : pos + int(hdr["ramdisk_size"])]
-    pos = align(pos + int(hdr["ramdisk_size"]), PAGE)
-
-    pos = align(pos + int(hdr["second_size"]), PAGE)
-    dt = blob[pos : pos + int(hdr["dt_size"])]
+    kernel = blob[pos : pos + int(header["kernel_size"])]
+    pos = align(pos + int(header["kernel_size"]), PAGE)
+    ramdisk = blob[pos : pos + int(header["ramdisk_size"])]
+    pos = align(pos + int(header["ramdisk_size"]), PAGE)
+    pos = align(pos + int(header["second_size"]), PAGE)
+    dt = blob[pos : pos + int(header["dt_size"])]
 
     if digest(kernel) != EXPECTED_KERNEL_SHA256:
-        errors.append(
-            "kernel hash differs from stock J720F Android 10 kernel"
-        )
-
+        errors.append("kernel differs from the exact J720F Android 10 stock kernel")
     if digest(dt) != EXPECTED_DT_SHA256:
-        errors.append(
-            "DT hash differs from exact stock J720F DT payload"
-        )
-
-    if (
-        not blob.endswith(TRAILER_MARKER)
-        and TRAILER_MARKER not in blob[-2048:]
-    ):
-        errors.append("stock Samsung recovery trailer is missing")
+        errors.append("DT differs from the exact J720F Android 10 stock DT")
+    if TRAILER_MARKER not in blob[-2048:]:
+        errors.append("Samsung recovery trailer is missing")
 
     try:
-        listing, rc_files, payloads = cpio_listing(ramdisk)
+        listing, payloads = extract_ramdisk(ramdisk)
     except Exception as exc:
-        # The audit must report ramdisk failures rather than silently skip them.
         errors.append(f"ramdisk inspection failed: {exc}")
-        listing, rc_files, payloads = [], {}, {}
+        listing, payloads = [], {}
 
-    rc_text = "\n".join(rc_files.values())
-    rc_lines = [
-        line.strip()
-        for line in rc_text.splitlines()
-        if line.strip()
-    ]
-
-    root_init_lines = [
-        line.strip()
-        for line in rc_files.get("init.rc", "").splitlines()
-        if line.strip()
-    ]
-
-    usb_init_lines = [
-        line.strip()
-        for line in rc_files.get(
-            "init.recovery.usb.rc",
-            "",
-        ).splitlines()
-        if line.strip()
-    ]
-
-    required_any = {
-        "TWRP recovery executable": {
-            "sbin/recovery",
-            "system/bin/recovery",
-        },
-        "adbd": {
-            "sbin/adbd",
-            "system/bin/adbd",
-        },
-        "recovery fstab": {
-            "etc/recovery.fstab",
-            "system/etc/recovery.fstab",
-        },
-        "device USB rc": {
-            "init.recovery.usb.rc",
-        },
-        "device recovery service rc": {
-            "init.recovery.service.rc",
-        },
-        "ADB-first diagnostic script": {
-            "sbin/j720f_diag.sh",
-        },
-        "hardware init rc": {
-            "init.recovery.samsungexynos7885.rc",
-        },
-        "hardware ueventd rc": {
-            "ueventd.samsungexynos7885.rc",
-        },
+    normalized = {item.lstrip("./") for item in listing}
+    required = {
+        "init",
+        "default.prop",
+        "etc/recovery.fstab",
+        "fstab.samsungexynos7885",
+        "init.recovery.service.rc",
+        "init.recovery.usb.rc",
+        "ueventd.samsungexynos7885.rc",
+        "sbin/recovery",
+        "sbin/adbd",
+        "sbin/libminuitwrp.so",
     }
+    for path in sorted(required - normalized):
+        errors.append(f"generated ramdisk is missing {path}")
 
-    normalized = {
-        item.lstrip("./")
-        for item in listing
-    }
+    recovery = payloads.get("sbin/recovery", b"")
+    if b"3.3.0-0" not in recovery:
+        errors.append("recovery executable is not TWRP 3.3.0-0")
 
-    for label, choices in required_any.items():
-        if not normalized.intersection(choices):
-            errors.append(
-                f"missing {label}: expected one of {sorted(choices)}"
-            )
+    service_rc = payloads.get("init.recovery.service.rc", b"").decode(errors="ignore")
+    if "service recovery /sbin/recovery" not in service_rc:
+        errors.append("generated service rc does not start /sbin/recovery")
 
-    recovery_binary = payloads.get("sbin/recovery", b"")
-    minui_binary = payloads.get("sbin/libminuitwrp.so", b"")
-    brightness_path = (
-        b"/sys/devices/14800000.dsim/backlight/panel/brightness"
-    )
+    fstab = payloads.get("etc/recovery.fstab", b"").decode(errors="ignore")
+    for forbidden in ("/carrier", "/external_sd", "/usb-otg"):
+        if forbidden in fstab:
+            errors.append(f"recovery fstab contains forbidden entry: {forbidden}")
+    for required_mount in ("/system", "/vendor", "/odm", "/data", "/cache", "/efs"):
+        if required_mount not in fstab:
+            errors.append(f"recovery fstab is missing {required_mount}")
 
-    if brightness_path not in recovery_binary:
-        errors.append(
-            "finished sbin/recovery does not contain the J720F panel "
-            "brightness path"
-        )
-
-    if b"setting DRM_FORMAT_ABGR8888" not in minui_binary:
-        errors.append(
-            "finished libminuitwrp.so does not contain ABGR_8888 "
-            "framebuffer support"
-        )
-
-    service_init_lines = [
-        line.strip()
-        for line in rc_files.get(
-            "init.recovery.service.rc",
-            "",
-        ).splitlines()
-        if line.strip()
-    ]
-
-    hardware_init_lines = [
-        line.strip()
-        for line in rc_files.get(
-            "init.recovery.samsungexynos7885.rc",
-            "",
-        ).splitlines()
-        if line.strip()
-    ]
-
-    if "service recovery /sbin/recovery" not in service_init_lines:
-        errors.append(
-            "diagnostic service rc does not define /sbin/recovery"
-        )
-
-    if "disabled" in service_init_lines:
-        errors.append(
-            "recovery service is still disabled; this build must start "
-            "/sbin/recovery normally"
-        )
-
-    if hardware_init_lines.count("start j720f_diag") != 1:
-        errors.append(
-            "hardware init must start j720f_diag exactly once"
-        )
-
-    if not any(
-        line.startswith("service j720f_diag ")
-        for line in hardware_init_lines
-    ):
-        errors.append(
-            "hardware init does not define the j720f_diag service"
-        )
-
-    if root_init_lines.count("start set_permissive") != 2:
-        errors.append(
-            "root /init.rc must start set_permissive exactly twice "
-            "(during init and boot)"
-        )
-
+    usb = payloads.get("init.recovery.usb.rc", b"").decode(errors="ignore")
     for required_line in (
-        "mkdir /dev/pts 0755 root root",
-        "mount devpts devpts /dev/pts",
-    ):
-        if required_line not in root_init_lines:
-            errors.append(
-                f"root /init.rc is missing: {required_line}"
-            )
-
-    forbidden_line = "setprop service.adb.root 1"
-    if forbidden_line in rc_lines:
-        errors.append(
-            f"generated ramdisk contains forbidden action: "
-            f"{forbidden_line}"
-        )
-
-    disable_line = "write /sys/class/android_usb/android0/enable 0"
-    enable_line = "write /sys/class/android_usb/android0/enable 1"
-
-    if (
-        rc_lines.count(disable_line) != 2
-        or usb_init_lines.count(disable_line) != 2
-    ):
-        errors.append(
-            "expected exactly two android0 enable=0 writes, owned by "
-            "init.recovery.usb.rc"
-        )
-
-    if (
-        rc_lines.count(enable_line) != 1
-        or usb_init_lines.count(enable_line) != 1
-    ):
-        errors.append(
-            "expected exactly one stock Samsung android0 enable=1 "
-            "bridge action, owned by init.recovery.usb.rc"
-        )
-
-    for required_bridge_line in (
-        "write /sys/class/android_usb/android0/f_ffs/aliases adb",
+        "write /sys/class/android_usb/android0/idVendor 04E8",
+        "write /sys/class/android_usb/android0/idProduct 6860",
         "write /sys/class/android_usb/android0/functions adb",
+        "write /sys/class/android_usb/android0/functions mtp,adb",
+        "write /sys/class/android_usb/android0/enable 1",
+        "start adbd",
     ):
-        if (
-            rc_lines.count(required_bridge_line) != 1
-            or usb_init_lines.count(required_bridge_line) != 1
-        ):
-            errors.append(
-                "missing or duplicated stock Samsung USB bridge action: "
-                f"{required_bridge_line}"
-            )
+        if required_line not in usb:
+            errors.append(f"legacy USB rc is missing: {required_line}")
+    for forbidden in ("usb_gadget", "functions/adb.0", "functions/ffs.adb"):
+        if forbidden in usb:
+            errors.append(f"legacy USB rc unexpectedly contains {forbidden}")
 
-    ffs_prefix = (
-        "mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb"
-    )
-
-    ffs_creations = [
-        line
-        for line in rc_lines
-        if line.startswith(ffs_prefix)
-    ]
-
-    usb_ffs_creations = [
-        line
-        for line in usb_init_lines
-        if line.startswith(ffs_prefix)
-    ]
-
-    if (
-        len(ffs_creations) != 1
-        or len(usb_ffs_creations) != 1
+    board = (args.tree / "BoardConfig.mk").read_text(errors="ignore")
+    for required_setting in (
+        'TARGET_RECOVERY_PIXEL_FORMAT := "ABGR_8888"',
+        "RECOVERY_GRAPHICS_USE_LINELENGTH := true",
+        "TW_USE_NEW_MINADBD := true",
+        "TW_INCLUDE_CRYPTO := true",
+        "TW_CRYPTO_USE_SYSTEM_VOLD := true",
     ):
-        errors.append(
-            "expected exactly one ffs.adb function creation, "
-            "owned by init.recovery.usb.rc"
-        )
+        if required_setting not in board:
+            errors.append(f"BoardConfig.mk is missing: {required_setting}")
+    if "TW_EXCLUDE_MTP" in board:
+        errors.append("MTP is still excluded in BoardConfig.mk")
 
-    if any(
-        "functions/adb.0" in line
-        for line in rc_lines
+    for obsolete in (
+        "recovery/root/init.rc",
+        "recovery/root/init.recovery.service.rc",
+        "recovery/root/init.recovery.samsungexynos7885.rc",
+        "recovery/root/sbin/j720f_diag.sh",
     ):
-        errors.append(
-            "legacy adb.0 gadget found; first bring-up must use "
-            "only ffs.adb"
-        )
+        if (args.tree / obsolete).exists():
+            errors.append(f"TWRP 9 bring-up override remains on legacy branch: {obsolete}")
 
-    mtp_markers = (
-        "/functions/mtp",
-        "sys.usb.config=mtp",
-        "setprop sys.usb.config mtp",
-        "start mtpd",
-    )
-
-    if any(
-        marker in line
-        for marker in mtp_markers
-        for line in rc_lines
-    ):
-        errors.append(
-            "MTP gadget configuration found; first bring-up "
-            "must remain ADB-only"
-        )
-
-    udc_bind = (
-        "write /sys/kernel/config/usb_gadget/g1/UDC "
-        "${sys.usb.controller}"
-    )
-
-    if (
-        rc_lines.count(udc_bind) != 1
-        or usb_init_lines.count(udc_bind) != 1
-    ):
-        errors.append(
-            "expected exactly one active UDC bind to "
-            "${sys.usb.controller}, owned by init.recovery.usb.rc"
-        )
-
-    controller_line = (
-        "setprop sys.usb.controller 13600000.dwc3"
-    )
-
-    if rc_lines.count(controller_line) != 1:
-        errors.append(
-            "USB controller 13600000.dwc3 must be set exactly once"
-        )
-
-    if (
-        "/sys/class/android_usb/android0/f_ffs/aliases"
-        not in rc_text
-    ):
-        errors.append(
-            "Samsung android_usb FunctionFS alias gate is missing"
-        )
-
-    if args.tree:
-        board = (
-            args.tree / "BoardConfig.mk"
-        ).read_text(errors="ignore")
-
-        for required_board_line in (
-            'TARGET_RECOVERY_PIXEL_FORMAT := "ABGR_8888"',
-            'TW_BRIGHTNESS_PATH := "/sys/devices/14800000.dsim/backlight/panel/brightness"',
-            "TW_MAX_BRIGHTNESS := 255",
-            "TW_DEFAULT_BRIGHTNESS := 153",
-        ):
-            if required_board_line not in board:
-                errors.append(
-                    "BoardConfig.mk is missing known-good display setting: "
-                    f"{required_board_line}"
-                )
-
-        if "BOARD_PREBUILT_RECOVERY_RAMDISK" in board:
-            errors.append(
-                "device tree still enables "
-                "BOARD_PREBUILT_RECOVERY_RAMDISK"
-            )
-
-        device_init = args.tree / "recovery/root/init.rc"
-
-        if not device_init.is_file():
-            errors.append(
-                "device-owned recovery/root/init.rc is missing"
-            )
-
-        for obsolete in (
-            "recovery/root/ueventd.rc",
-            "recovery/root/sepolicy_version",
-        ):
-            if (args.tree / obsolete).exists():
-                errors.append(
-                    f"obsolete top-level override still exists: "
-                    f"{obsolete}"
-                )
-
-        stale_hardware_files = (
-            "recovery/root/init.recovery.exynos7884.rc",
-            "recovery/root/ueventd.exynos7884.rc",
-        )
-
-        for stale in stale_hardware_files:
-            if (args.tree / stale).exists():
-                errors.append(
-                    f"stale hardware-specific rc remains: {stale}"
-                )
-
-        device_mk = (
-            args.tree / "device.mk"
-        ).read_text(errors="ignore")
-
-        if "ro.hardware=samsungexynos7885" not in device_mk:
-            errors.append(
-                "device.mk does not use stock "
-                "ro.hardware=samsungexynos7885"
-            )
-
-        if (
-            b"androidboot.hardware=samsungexynos7885"
-            not in dt
-        ):
-            errors.append(
-                "DT does not advertise stock "
-                "samsungexynos7885 hardware name"
-            )
-
-    args.out_dir.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
+    args.out_dir.mkdir(parents=True, exist_ok=True)
     report = {
         "image": str(args.image),
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),
         "sha256": digest(blob),
-        "header": hdr,
+        "header": header,
         "kernel_sha256": digest(kernel),
         "dt_sha256": digest(dt),
         "errors": errors,
         "warnings": warnings,
     }
-
-    (
-        args.out_dir / "audit.json"
-    ).write_text(
-        json.dumps(report, indent=2) + "\n"
-    )
-
-    (
-        args.out_dir / "ramdisk-files.txt"
-    ).write_text(
-        "\n".join(listing) + "\n"
-    )
-
-    (
-        args.out_dir / "sha256.txt"
-    ).write_text(
-        f"{digest(blob)}  {args.image.name}\n"
-    )
-
+    (args.out_dir / "audit.json").write_text(json.dumps(report, indent=2) + "\n")
+    (args.out_dir / "ramdisk-files.txt").write_text("\n".join(listing) + "\n")
     print(json.dumps(report, indent=2))
-
     return 1 if errors else 0
 
 

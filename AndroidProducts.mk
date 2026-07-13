@@ -1,5 +1,5 @@
-PRODUCT_MAKEFILES := \
-    $(LOCAL_DIR)/omni_j7duolte.mk
+LOCAL_PATH := device/samsung/j7duolte/
 
-COMMON_LUNCH_CHOICES := \
-    omni_j7duolte-eng
+include $(call all-makefiles-under,$(LOCAL_PATH))
+
+PRODUCT_MAKEFILES := $(LOCAL_DIR)/omni_j7duolte.mk
