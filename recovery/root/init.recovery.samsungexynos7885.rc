@@ -1,8 +1,5 @@
 # Device-specific recovery bring-up for Samsung SM-J720F.
-
-on early-init
-    setprop sys.usb.controller 13600000.dwc3
-    setprop sys.usb.configfs 1
+# USB controller and gadget ownership live in init.recovery.usb.rc.
 
 on init
     # Create only mount points that exist in the J720F PIT/fstab.
@@ -22,11 +19,11 @@ on init
 on boot
     start j720f_diag
 
-    # Force the first source-built image to ADB-only mode.
+    # Keep the persistent recovery preference ADB-only.
     setprop persist.sys.usb.config adb
 
-# Capture the boot state without allowing the TWRP process to interfere with
-# USB bring-up. The script also persists a copy under /cache/recovery.
+# Capture the boot state while TWRP starts. The script also persists a copy
+# under /cache/recovery when the cache partition is available.
 service j720f_diag /sbin/sh /sbin/j720f_diag.sh
     disabled
     oneshot
