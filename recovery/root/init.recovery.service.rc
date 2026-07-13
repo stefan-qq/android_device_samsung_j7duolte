@@ -1,5 +1,6 @@
-# ADB-first diagnostic image: do not start TWRP automatically.
-# Start /sbin/recovery manually only after ADB is stable.
+on boot
+
+# Start TWRP normally. The separate j720f_diag service remains active so a
+# working ADB connection can capture the early boot and graphics state.
 service recovery /sbin/recovery
-    disabled
     seclabel u:r:recovery:s0
