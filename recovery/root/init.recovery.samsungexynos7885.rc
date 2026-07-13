@@ -20,5 +20,16 @@ on init
     mkdir /cache/recovery 0770 system cache
 
 on boot
+    start j720f_diag
+
     # Force the first source-built image to ADB-only mode.
     setprop persist.sys.usb.config adb
+
+# Capture the boot state without allowing the TWRP process to interfere with
+# USB bring-up. The script also persists a copy under /cache/recovery.
+service j720f_diag /sbin/sh /sbin/j720f_diag.sh
+    disabled
+    oneshot
+    user root
+    group root shell log system cache
+    seclabel u:r:recovery:s0
