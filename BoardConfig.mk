@@ -76,6 +76,14 @@ TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery.fstab
 TARGET_SCREEN_DENSITY := 280
 TW_THEME := portrait_hdpi
 
+# The known UI-working J720F ramdisk was built from the Exynos7870-family
+# graphics configuration. Its minui supports the panel's ABGR framebuffer and
+# uses the real Samsung panel brightness node.
+TARGET_RECOVERY_PIXEL_FORMAT := "ABGR_8888"
+TW_BRIGHTNESS_PATH := "/sys/devices/14800000.dsim/backlight/panel/brightness"
+TW_MAX_BRIGHTNESS := 255
+TW_DEFAULT_BRIGHTNESS := 153
+
 # First bring-up: ADB only. MTP and external SD deliberately stay disabled until
 # USB enumeration and adbd are stable.
 TW_EXCLUDE_MTP := true
