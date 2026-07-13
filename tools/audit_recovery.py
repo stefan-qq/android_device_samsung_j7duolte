@@ -149,6 +149,19 @@ def main() -> int:
     if hdr["page_size"] != PAGE:
         errors.append(f"page size {hdr['page_size']} != {PAGE}")
 
+    cmdline_tokens = str(hdr["cmdline"]).split()
+
+    if "androidboot.selinux=permissive" not in cmdline_tokens:
+        errors.append(
+            "recovery command line is missing "
+            "androidboot.selinux=permissive"
+        )
+
+    if "enforcing=0" not in cmdline_tokens:
+        errors.append(
+            "recovery command line is missing enforcing=0"
+        )
+
     expected = {
         "kernel_addr": 0x10008000,
         "ramdisk_addr": 0x11000000,
