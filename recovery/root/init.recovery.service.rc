@@ -1,0 +1,5 @@
+# ADB-first diagnostic image: do not start TWRP automatically.
+# Start /sbin/recovery manually only after ADB is stable.
+service recovery /sbin/recovery
+    disabled
+    seclabel u:r:recovery:s0
