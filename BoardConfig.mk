@@ -76,10 +76,11 @@ TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery.fstab
 TARGET_SCREEN_DENSITY := 280
 TW_THEME := portrait_hdpi
 
-# The known UI-working J720F ramdisk was built from the Exynos7870-family
-# graphics configuration. Its minui supports the panel's ABGR framebuffer and
-# uses the real Samsung panel brightness node.
+# Match the graphics configuration of the exact j7y17lte source tree that
+# produced the UI-working donor recovery. Samsung's framebuffer may use a row
+# stride larger than the visible pixel width, so minui must honor line_length.
 TARGET_RECOVERY_PIXEL_FORMAT := "ABGR_8888"
+RECOVERY_GRAPHICS_USE_LINELENGTH := true
 TW_BRIGHTNESS_PATH := "/sys/devices/14800000.dsim/backlight/panel/brightness"
 TW_MAX_BRIGHTNESS := 255
 TW_DEFAULT_BRIGHTNESS := 153
