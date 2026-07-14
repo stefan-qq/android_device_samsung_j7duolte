@@ -1,48 +1,68 @@
-# J720F Android 10 kernel: single FunctionFS ADB gadget through ConfigFS.
-# v18 proved that 13600000.dwc3 enumerates, but it linked both adb.0 and
-# ffs.adb. Keep only ffs.adb and bind the UDC after adbd reports ready.
+# Preserve the init sequence used by the best source-built recovery.
 
 on early-init
+    write /sys/fs/selinux/enforce 0
     setprop sys.usb.configfs 1
     setprop sys.usb.controller 13600000.dwc3
+    setprop sys.usb.j720f.configured 0
 
-on fs
-    mount configfs none /sys/kernel/config
-    mkdir /sys/kernel/config/usb_gadget/g1 0770 shell shell
-    write /sys/kernel/config/usb_gadget/g1/idVendor 0x04e8
-    write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
-    write /sys/kernel/config/usb_gadget/g1/bcdDevice 0x0404
-    write /sys/kernel/config/usb_gadget/g1/bcdUSB 0x0200
+on init
+    start j720f_permissive
 
-    mkdir /sys/kernel/config/usb_gadget/g1/strings/0x409 0770 shell shell
-    write /sys/kernel/config/usb_gadget/g1/strings/0x409/serialnumber ${ro.serialno}
-    write /sys/kernel/config/usb_gadget/g1/strings/0x409/manufacturer SAMSUNG
-    write /sys/kernel/config/usb_gadget/g1/strings/0x409/product SM-J720F_TWRP
+service j720f_permissive /sbin/permissive.sh
+    class core
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:init:s0
 
-    mkdir /sys/kernel/config/usb_gadget/g1/configs/c.1 0770 shell shell
-    mkdir /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409 0770 shell shell
-    write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration ADB
-    write /sys/kernel/config/usb_gadget/g1/configs/c.1/MaxPower 0x3f
+# Execute ConfigFS operations in the recovery domain, which is permissive
+# during bring-up. Do not create the duplicate adb.0 function used by v18.
 
-    mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
-    symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb
+service j720f_usb_setup /sbin/j720f_usb.sh setup
+    class core
+    user root
+    group root shell
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
+service j720f_usb_bind /sbin/j720f_usb.sh bind
+    class core
+    user root
+    group root shell
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
+service j720f_usb_disable /sbin/j720f_usb.sh disable
+    class core
+    user root
+    group root shell
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
+# The base recovery init mounts /dev/usb-ffs/adb during the fs trigger.
+# Configure the gadget afterward, then start adbd.
 
 on boot
+    start j720f_usb_setup
+
+on property:sys.usb.j720f.configured=1
     setprop sys.usb.config adb
-
-on property:sys.usb.config=none && property:sys.usb.configfs=1
-    stop adbd
-    setprop sys.usb.ffs.ready 0
-    write /sys/kernel/config/usb_gadget/g1/UDC none
-    setprop sys.usb.state none
-
-on property:sys.usb.config=adb
     start adbd
 
-# TWRP requests MTP before usable storage exists. Keep this stage ADB-only.
+# Bind only after adbd has opened the FunctionFS endpoints.
+on property:sys.usb.ffs.ready=1
+    start j720f_usb_bind
+
+# TWRP requests MTP even though storage is not usable yet.
 on property:sys.usb.config=mtp,adb
     setprop sys.usb.config adb
 
-on property:sys.usb.ffs.ready=1 && property:sys.usb.config=adb
-    write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
-    setprop sys.usb.state adb
+on property:sys.usb.config=none
+    stop adbd
+    start j720f_usb_disable
+    setprop sys.usb.ffs.ready 0

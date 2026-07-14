@@ -103,6 +103,7 @@ def extract_ramdisk(ramdisk: bytes) -> tuple[list[str], dict[str, bytes]]:
             "ueventd.samsungexynos7885.rc",
             "sbin/recovery",
             "sbin/adbd",
+            "sbin/j720f_usb.sh",
             "sbin/libminuitwrp.so",
         ):
             path = root / relative
@@ -195,6 +196,7 @@ def main() -> int:
         "ueventd.samsungexynos7885.rc",
         "sbin/recovery",
         "sbin/adbd",
+        "sbin/j720f_usb.sh",
         "sbin/libminuitwrp.so",
     }
     for path in sorted(required - normalized):
@@ -223,29 +225,50 @@ def main() -> int:
             errors.append(f"recovery fstab is missing {required_mount}")
 
     usb = payloads.get("init.recovery.usb.rc", b"").decode(errors="ignore")
+
     for required_line in (
+        "write /sys/fs/selinux/enforce 0",
         "setprop sys.usb.configfs 1",
         "setprop sys.usb.controller 13600000.dwc3",
-        "mount configfs none /sys/kernel/config",
-        "mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell",
-        "symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
-        "on boot\n    setprop sys.usb.config adb",
-        "on property:sys.usb.config=adb\n    start adbd",
-        "on property:sys.usb.config=mtp,adb\n    setprop sys.usb.config adb",
-        "on property:sys.usb.ffs.ready=1 && property:sys.usb.config=adb",
-        "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}",
-        "setprop sys.usb.state adb",
+        "start j720f_permissive",
+        "service j720f_usb_setup /sbin/j720f_usb.sh setup",
+        "service j720f_usb_bind /sbin/j720f_usb.sh bind",
+        "service j720f_usb_disable /sbin/j720f_usb.sh disable",
+        "on property:sys.usb.j720f.configured=1",
+        "on property:sys.usb.ffs.ready=1",
+        "start j720f_usb_bind",
+        "on property:sys.usb.config=mtp,adb",
+        "setprop sys.usb.config adb",
+        "seclabel u:r:recovery:s0",
     ):
         if required_line not in usb:
-            errors.append(f"ConfigFS ADB rc is missing: {required_line}")
+            errors.append(f"recovery-domain USB rc is missing: {required_line}")
 
-    for forbidden in ("/sys/class/android_usb", "functions/adb.0"):
-        if forbidden in usb:
-            errors.append(f"ConfigFS ADB rc unexpectedly contains {forbidden}")
+    usb_helper = payloads.get("sbin/j720f_usb.sh", b"").decode(
+        errors="ignore"
+    )
+    for required_line in (
+        "/sys/kernel/config/usb_gadget/g1",
+        "functions/ffs.adb",
+        "13600000.dwc3",
+        "sys.usb.j720f.configured",
+        'case "${1:-}" in',
+    ):
+        if required_line not in usb_helper:
+            errors.append(f"USB helper is missing: {required_line}")
+
+    for forbidden in (
+        "/sys/class/android_usb",
+        "functions/adb.0",
+    ):
+        if forbidden in usb or forbidden in usb_helper:
+            errors.append(
+                f"single-function ConfigFS path unexpectedly contains {forbidden}"
+            )
 
     default_prop = payloads.get("default.prop", b"").decode(errors="ignore")
     if "persist.sys.usb.config=adb" not in default_prop:
-        errors.append("default.prop does not select the ADB-only bring-up mode")
+        errors.append("default.prop does not select ADB-only bring-up")
     if "persist.sys.usb.config=mtp,adb" in default_prop:
         errors.append("default.prop still selects MTP during ADB bring-up")
 
@@ -270,8 +293,14 @@ def main() -> int:
         recovery_policy = recovery_policy_path.read_text(errors="ignore")
         if "permissive recovery;" not in recovery_policy:
             errors.append("recovery SELinux domain is not permissive")
-        if "permissive adbd;" not in recovery_policy:
-            errors.append("adbd SELinux domain is not permissive")
+        for forbidden_policy in (
+            "permissive adbd;",
+            "permissive init;",
+        ):
+            if forbidden_policy in recovery_policy:
+                errors.append(
+                    f"unexpected permissive domain remains: {forbidden_policy}"
+                )
 
     for obsolete in (
         "recovery/root/init.rc",
