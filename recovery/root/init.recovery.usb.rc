@@ -1,10 +1,11 @@
-# Preserve the init sequence used by the best source-built recovery.
+# Force permissive mode directly from init before recovery starts.
+# The service-based setenforce attempts are packaged but have no runtime effect.
 
 on early-init
     write /sys/fs/selinux/enforce 0
-    setprop sys.usb.configfs 1
-    setprop sys.usb.controller 13600000.dwc3
-    setprop sys.usb.j720f.configured 0
+
+# Run the permissive helper in init's SELinux domain.
+# The donor service runs as recovery and cannot change enforcement.
 
 on init
     start j720f_permissive
@@ -17,52 +18,41 @@ service j720f_permissive /sbin/permissive.sh
     oneshot
     seclabel u:r:init:s0
 
-# Execute ConfigFS operations in the recovery domain, which is permissive
-# during bring-up. Do not create the duplicate adb.0 function used by v18.
+# Samsung legacy android_usb gadget flow used by the exact donor generation.
+# This intentionally avoids ConfigFS and creates only one ADB interface.
 
-service j720f_usb_setup /sbin/j720f_usb.sh setup
-    class core
-    user root
-    group root shell
-    disabled
-    oneshot
-    seclabel u:r:recovery:s0
-
-service j720f_usb_bind /sbin/j720f_usb.sh bind
-    class core
-    user root
-    group root shell
-    disabled
-    oneshot
-    seclabel u:r:recovery:s0
-
-service j720f_usb_disable /sbin/j720f_usb.sh disable
-    class core
-    user root
-    group root shell
-    disabled
-    oneshot
-    seclabel u:r:recovery:s0
-
-# The base recovery init mounts /dev/usb-ffs/adb during the fs trigger.
-# Configure the gadget afterward, then start adbd.
-
-on boot
-    start j720f_usb_setup
-
-on property:sys.usb.j720f.configured=1
-    setprop sys.usb.config adb
-    start adbd
-
-# Bind only after adbd has opened the FunctionFS endpoints.
-on property:sys.usb.ffs.ready=1
-    start j720f_usb_bind
-
-# TWRP requests MTP even though storage is not usable yet.
-on property:sys.usb.config=mtp,adb
-    setprop sys.usb.config adb
+on fs
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/idVendor 04E8
+    write /sys/class/android_usb/android0/idProduct 6860
+    write /sys/class/android_usb/android0/f_ffs/aliases adb
+    write /sys/class/android_usb/android0/functions adb
+    write /sys/class/android_usb/android0/iManufacturer SAMSUNG
+    write /sys/class/android_usb/android0/iProduct SM-J720F
+    write /sys/class/android_usb/android0/iSerial ${ro.serialno}
 
 on property:sys.usb.config=none
-    stop adbd
-    start j720f_usb_disable
-    setprop sys.usb.ffs.ready 0
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/bDeviceClass 0
+    setprop sys.usb.state none
+
+on property:sys.usb.config=adb
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/functions adb
+    start adbd
+    write /sys/class/android_usb/android0/enable 1
+    setprop sys.usb.state adb
+
+on property:sys.usb.config=mtp,adb
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/functions mtp,adb
+    start adbd
+    write /sys/class/android_usb/android0/enable 1
+    setprop sys.usb.state mtp,adb
+
+on property:sys.usb.config=mass_storage,adb
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/functions mass_storage,adb
+    start adbd
+    write /sys/class/android_usb/android0/enable 1
+    setprop sys.usb.state mass_storage,adb

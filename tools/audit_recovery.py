@@ -103,7 +103,6 @@ def extract_ramdisk(ramdisk: bytes) -> tuple[list[str], dict[str, bytes]]:
             "ueventd.samsungexynos7885.rc",
             "sbin/recovery",
             "sbin/adbd",
-            "sbin/j720f_usb.sh",
             "sbin/libminuitwrp.so",
         ):
             path = root / relative
@@ -196,7 +195,6 @@ def main() -> int:
         "ueventd.samsungexynos7885.rc",
         "sbin/recovery",
         "sbin/adbd",
-        "sbin/j720f_usb.sh",
         "sbin/libminuitwrp.so",
     }
     for path in sorted(required - normalized):
@@ -207,8 +205,17 @@ def main() -> int:
         errors.append("recovery executable is not TWRP 3.3.0-0")
 
     service_rc = payloads.get("init.recovery.service.rc", b"").decode(errors="ignore")
-    if "service recovery /sbin/recovery" not in service_rc:
-        errors.append("generated service rc does not start /sbin/recovery")
+    for required_line in (
+        "on boot",
+        "wait /dev/.coldboot_done",
+        "start recovery",
+        "setprop sys.j720f.recovery.started 1",
+        "service recovery /sbin/recovery",
+        "disabled",
+        "seclabel u:r:recovery:s0",
+    ):
+        if required_line not in service_rc:
+            errors.append(f"generated service rc is missing: {required_line}")
 
     hardware_rc = payloads.get(
         "init.recovery.samsungexynos7885.rc", b""
@@ -225,52 +232,34 @@ def main() -> int:
             errors.append(f"recovery fstab is missing {required_mount}")
 
     usb = payloads.get("init.recovery.usb.rc", b"").decode(errors="ignore")
+    if "on early-init\n    write /sys/fs/selinux/enforce 0" not in usb:
+        errors.append("USB init rc does not force permissive during early-init")
 
+    permissive_service = """service j720f_permissive /sbin/permissive.sh
+    class core
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:init:s0
+"""
+    if "on init\n    start j720f_permissive" not in usb:
+        errors.append("USB init rc does not start j720f_permissive during init")
+    if permissive_service not in usb:
+        errors.append("USB init rc does not run the permissive helper in init domain")
     for required_line in (
-        "write /sys/fs/selinux/enforce 0",
-        "setprop sys.usb.configfs 1",
-        "setprop sys.usb.controller 13600000.dwc3",
-        "start j720f_permissive",
-        "service j720f_usb_setup /sbin/j720f_usb.sh setup",
-        "service j720f_usb_bind /sbin/j720f_usb.sh bind",
-        "service j720f_usb_disable /sbin/j720f_usb.sh disable",
-        "on property:sys.usb.j720f.configured=1",
-        "on property:sys.usb.ffs.ready=1",
-        "start j720f_usb_bind",
-        "on property:sys.usb.config=mtp,adb",
-        "setprop sys.usb.config adb",
-        "seclabel u:r:recovery:s0",
+        "write /sys/class/android_usb/android0/idVendor 04E8",
+        "write /sys/class/android_usb/android0/idProduct 6860",
+        "write /sys/class/android_usb/android0/functions adb",
+        "write /sys/class/android_usb/android0/functions mtp,adb",
+        "write /sys/class/android_usb/android0/enable 1",
+        "start adbd",
     ):
         if required_line not in usb:
-            errors.append(f"recovery-domain USB rc is missing: {required_line}")
-
-    usb_helper = payloads.get("sbin/j720f_usb.sh", b"").decode(
-        errors="ignore"
-    )
-    for required_line in (
-        "/sys/kernel/config/usb_gadget/g1",
-        "functions/ffs.adb",
-        "13600000.dwc3",
-        "sys.usb.j720f.configured",
-        'case "${1:-}" in',
-    ):
-        if required_line not in usb_helper:
-            errors.append(f"USB helper is missing: {required_line}")
-
-    for forbidden in (
-        "/sys/class/android_usb",
-        "functions/adb.0",
-    ):
-        if forbidden in usb or forbidden in usb_helper:
-            errors.append(
-                f"single-function ConfigFS path unexpectedly contains {forbidden}"
-            )
-
-    default_prop = payloads.get("default.prop", b"").decode(errors="ignore")
-    if "persist.sys.usb.config=adb" not in default_prop:
-        errors.append("default.prop does not select ADB-only bring-up")
-    if "persist.sys.usb.config=mtp,adb" in default_prop:
-        errors.append("default.prop still selects MTP during ADB bring-up")
+            errors.append(f"legacy USB rc is missing: {required_line}")
+    for forbidden in ("usb_gadget", "functions/adb.0", "functions/ffs.adb"):
+        if forbidden in usb:
+            errors.append(f"legacy USB rc unexpectedly contains {forbidden}")
 
     board = (args.tree / "BoardConfig.mk").read_text(errors="ignore")
     for required_setting in (
@@ -293,18 +282,9 @@ def main() -> int:
         recovery_policy = recovery_policy_path.read_text(errors="ignore")
         if "permissive recovery;" not in recovery_policy:
             errors.append("recovery SELinux domain is not permissive")
-        for forbidden_policy in (
-            "permissive adbd;",
-            "permissive init;",
-        ):
-            if forbidden_policy in recovery_policy:
-                errors.append(
-                    f"unexpected permissive domain remains: {forbidden_policy}"
-                )
 
     for obsolete in (
         "recovery/root/init.rc",
-        "recovery/root/init.recovery.service.rc",
         "recovery/root/sbin/j720f_diag.sh",
     ):
         if (args.tree / obsolete).exists():
