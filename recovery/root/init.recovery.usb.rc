@@ -1,3 +1,9 @@
+# Force permissive mode directly from init before recovery starts.
+# The service-based setenforce attempts are packaged but have no runtime effect.
+
+on early-init
+    write /sys/fs/selinux/enforce 0
+
 # Run the permissive helper in init's SELinux domain.
 # The donor service runs as recovery and cannot change enforcement.
 

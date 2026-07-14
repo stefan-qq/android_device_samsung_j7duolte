@@ -223,6 +223,8 @@ def main() -> int:
             errors.append(f"recovery fstab is missing {required_mount}")
 
     usb = payloads.get("init.recovery.usb.rc", b"").decode(errors="ignore")
+    if "on early-init\n    write /sys/fs/selinux/enforce 0" not in usb:
+        errors.append("USB init rc does not force permissive during early-init")
 
     permissive_service = """service j720f_permissive /sbin/permissive.sh
     class core
