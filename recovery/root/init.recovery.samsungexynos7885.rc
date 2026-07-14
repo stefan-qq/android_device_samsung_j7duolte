@@ -1,6 +1,6 @@
-# J720F donor-era recovery initialization.
+# Force the donor-era recovery environment permissive before TWRP starts.
+# The stock kernel command line alone does not appear to leave recovery
+# permissive on this device.
 
 on init
-    mkdir /dev/pts 0755 root root
-    mount devpts devpts /dev/pts
     start set_permissive

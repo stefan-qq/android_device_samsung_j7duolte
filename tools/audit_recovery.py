@@ -213,10 +213,6 @@ def main() -> int:
     ).decode(errors="ignore")
     if "start set_permissive" not in hardware_rc:
         errors.append("hardware recovery rc does not start set_permissive")
-    if "mkdir /dev/pts 0755 root root" not in hardware_rc:
-        errors.append("hardware recovery rc does not create /dev/pts")
-    if "mount devpts devpts /dev/pts" not in hardware_rc:
-        errors.append("hardware recovery rc does not mount devpts")
 
     fstab = payloads.get("etc/recovery.fstab", b"").decode(errors="ignore")
     for forbidden in ("/carrier", "/external_sd", "/usb-otg"):
