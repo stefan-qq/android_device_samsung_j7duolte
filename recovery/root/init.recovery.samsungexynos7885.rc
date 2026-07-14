@@ -1,0 +1,6 @@
+# Force the donor-era recovery environment permissive before TWRP starts.
+# The stock kernel command line alone does not appear to leave recovery
+# permissive on this device.
+
+on init
+    start set_permissive
