@@ -1,3 +1,17 @@
+# Run the permissive helper in init's SELinux domain.
+# The donor service runs as recovery and cannot change enforcement.
+
+on init
+    start j720f_permissive
+
+service j720f_permissive /sbin/permissive.sh
+    class core
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:init:s0
+
 # Samsung legacy android_usb gadget flow used by the exact donor generation.
 # This intentionally avoids ConfigFS and creates only one ADB interface.
 

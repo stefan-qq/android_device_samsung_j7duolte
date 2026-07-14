@@ -223,6 +223,19 @@ def main() -> int:
             errors.append(f"recovery fstab is missing {required_mount}")
 
     usb = payloads.get("init.recovery.usb.rc", b"").decode(errors="ignore")
+
+    permissive_service = """service j720f_permissive /sbin/permissive.sh
+    class core
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:init:s0
+"""
+    if "on init\n    start j720f_permissive" not in usb:
+        errors.append("USB init rc does not start j720f_permissive during init")
+    if permissive_service not in usb:
+        errors.append("USB init rc does not run the permissive helper in init domain")
     for required_line in (
         "write /sys/class/android_usb/android0/idVendor 04E8",
         "write /sys/class/android_usb/android0/idProduct 6860",
