@@ -207,17 +207,8 @@ def main() -> int:
         errors.append("recovery executable is not TWRP 3.3.0-0")
 
     service_rc = payloads.get("init.recovery.service.rc", b"").decode(errors="ignore")
-    for required_line in (
-        "on boot",
-        "wait /dev/.coldboot_done",
-        "start recovery",
-        "setprop sys.j720f.recovery.started 1",
-        "service recovery /sbin/recovery",
-        "disabled",
-        "seclabel u:r:recovery:s0",
-    ):
-        if required_line not in service_rc:
-            errors.append(f"generated service rc is missing: {required_line}")
+    if "service recovery /sbin/recovery" not in service_rc:
+        errors.append("generated service rc does not start /sbin/recovery")
 
     hardware_rc = payloads.get(
         "init.recovery.samsungexynos7885.rc", b""
@@ -264,12 +255,9 @@ def main() -> int:
             errors.append(f"legacy USB rc unexpectedly contains {forbidden}")
 
     for required_line in (
-        "on property:sys.j720f.recovery.started=1",
         "start j720f_usb_setup",
         "service j720f_usb_setup /sbin/j720f_usb.sh",
         "seclabel u:r:recovery:s0",
-        "on property:sys.usb.j720f.configured=1",
-        "restart adbd",
     ):
         if required_line not in usb:
             errors.append(f"late ConfigFS USB rc is missing: {required_line}")
@@ -278,12 +266,12 @@ def main() -> int:
         errors="ignore"
     )
     for required_line in (
-        "sleep 10",
         "/sys/kernel/config/usb_gadget/g1",
         "functions/ffs.adb",
-        "13600000.dwc3",
         "sys.usb.ffs.ready",
-        "sys.usb.j720f.configured",
+        "13600000.dwc3",
+        "bound_ready",
+        "bound_forced",
     ):
         if required_line not in usb_helper:
             errors.append(f"late ConfigFS helper is missing: {required_line}")
@@ -321,11 +309,14 @@ def main() -> int:
         recovery_policy = recovery_policy_path.read_text(errors="ignore")
         if "permissive recovery;" not in recovery_policy:
             errors.append("recovery SELinux domain is not permissive")
-        if "permissive adbd;" not in recovery_policy:
-            errors.append("adbd SELinux domain is not permissive")
+        if "permissive adbd;" in recovery_policy:
+            errors.append("adbd unexpectedly remains permissive")
+        if "permissive init;" in recovery_policy:
+            errors.append("init unexpectedly remains permissive")
 
     for obsolete in (
         "recovery/root/init.rc",
+        "recovery/root/init.recovery.service.rc",
         "recovery/root/sbin/j720f_diag.sh",
     ):
         if (args.tree / obsolete).exists():

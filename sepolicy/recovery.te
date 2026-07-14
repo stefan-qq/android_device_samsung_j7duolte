@@ -1,7 +1,3 @@
 # Keep the TWRP userspace permissive while the J720F recovery policy is
 # brought up. Other domains remain governed by the compiled SELinux policy.
 permissive recovery;
-
-# Allow the donor-era adbd to initialize its FunctionFS endpoints while the
-# single-function ConfigFS path is brought up.
-permissive adbd;
