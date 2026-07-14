@@ -259,11 +259,20 @@ def main() -> int:
         "TW_USE_NEW_MINADBD := true",
         "TW_INCLUDE_CRYPTO := true",
         "TW_CRYPTO_USE_SYSTEM_VOLD := true",
+        "BOARD_SEPOLICY_DIRS += $(DEVICE_PATH)/sepolicy",
     ):
         if required_setting not in board:
             errors.append(f"BoardConfig.mk is missing: {required_setting}")
     if "TW_EXCLUDE_MTP" in board:
         errors.append("MTP is still excluded in BoardConfig.mk")
+
+    recovery_policy_path = args.tree / "sepolicy/recovery.te"
+    if not recovery_policy_path.is_file():
+        errors.append("device recovery SELinux policy is missing")
+    else:
+        recovery_policy = recovery_policy_path.read_text(errors="ignore")
+        if "permissive recovery;" not in recovery_policy:
+            errors.append("recovery SELinux domain is not permissive")
 
     for obsolete in (
         "recovery/root/init.rc",

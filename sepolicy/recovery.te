@@ -1,0 +1,3 @@
+# Keep the TWRP userspace permissive while the J720F recovery policy is
+# brought up. Other domains remain governed by the compiled SELinux policy.
+permissive recovery;

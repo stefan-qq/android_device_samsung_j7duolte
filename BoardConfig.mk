@@ -51,6 +51,9 @@ TARGET_USERIMAGES_USE_EXT4 := true
 TARGET_USERIMAGES_USE_F2FS := false
 TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery.fstab
 
+# Device-specific recovery SELinux policy
+BOARD_SEPOLICY_DIRS += $(DEVICE_PATH)/sepolicy
+
 # TWRP 3.3 configuration copied from the exact UI-working donor generation
 RECOVERY_VARIANT := twrp
 TW_THEME := portrait_hdpi
