@@ -103,6 +103,7 @@ def extract_ramdisk(ramdisk: bytes) -> tuple[list[str], dict[str, bytes]]:
             "ueventd.samsungexynos7885.rc",
             "sbin/recovery",
             "sbin/adbd",
+            "sbin/j720f_usb.sh",
             "sbin/libminuitwrp.so",
         ):
             path = root / relative
@@ -195,6 +196,7 @@ def main() -> int:
         "ueventd.samsungexynos7885.rc",
         "sbin/recovery",
         "sbin/adbd",
+        "sbin/j720f_usb.sh",
         "sbin/libminuitwrp.so",
     }
     for path in sorted(required - normalized):
@@ -261,6 +263,43 @@ def main() -> int:
         if forbidden in usb:
             errors.append(f"legacy USB rc unexpectedly contains {forbidden}")
 
+    for required_line in (
+        "on property:sys.j720f.recovery.started=1",
+        "start j720f_usb_setup",
+        "service j720f_usb_setup /sbin/j720f_usb.sh",
+        "seclabel u:r:recovery:s0",
+        "on property:sys.usb.j720f.configured=1",
+        "restart adbd",
+    ):
+        if required_line not in usb:
+            errors.append(f"late ConfigFS USB rc is missing: {required_line}")
+
+    usb_helper = payloads.get("sbin/j720f_usb.sh", b"").decode(
+        errors="ignore"
+    )
+    for required_line in (
+        "sleep 10",
+        "/sys/kernel/config/usb_gadget/g1",
+        "functions/ffs.adb",
+        "13600000.dwc3",
+        "sys.usb.ffs.ready",
+        "sys.usb.j720f.configured",
+    ):
+        if required_line not in usb_helper:
+            errors.append(f"late ConfigFS helper is missing: {required_line}")
+
+    if "functions/adb.0" in usb_helper:
+        errors.append("late ConfigFS helper recreates the v18 adb.0 function")
+
+    default_props = {
+        line.strip()
+        for line in payloads.get("default.prop", b"").decode(
+            errors="ignore"
+        ).splitlines()
+    }
+    if "persist.sys.usb.config=mtp,adb" not in default_props:
+        errors.append("default.prop no longer preserves the v11 USB baseline")
+
     board = (args.tree / "BoardConfig.mk").read_text(errors="ignore")
     for required_setting in (
         'TARGET_RECOVERY_PIXEL_FORMAT := "ABGR_8888"',
@@ -282,6 +321,8 @@ def main() -> int:
         recovery_policy = recovery_policy_path.read_text(errors="ignore")
         if "permissive recovery;" not in recovery_policy:
             errors.append("recovery SELinux domain is not permissive")
+        if "permissive adbd;" not in recovery_policy:
+            errors.append("adbd SELinux domain is not permissive")
 
     for obsolete in (
         "recovery/root/init.rc",

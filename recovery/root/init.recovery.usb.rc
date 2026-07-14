@@ -56,3 +56,21 @@ on property:sys.usb.config=mass_storage,adb
     start adbd
     write /sys/class/android_usb/android0/enable 1
     setprop sys.usb.state mass_storage,adb
+
+# Configure ConfigFS only after TWRP has started. This keeps the v11 startup
+# ordering intact and creates only one FunctionFS ADB interface.
+
+on property:sys.j720f.recovery.started=1
+    start j720f_usb_setup
+
+service j720f_usb_setup /sbin/j720f_usb.sh
+    class core
+    user root
+    group root shell
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
+on property:sys.usb.j720f.configured=1
+    setprop sys.usb.ffs.ready 0
+    restart adbd
