@@ -98,6 +98,7 @@ def extract_ramdisk(ramdisk: bytes) -> tuple[list[str], dict[str, bytes]]:
             "etc/recovery.fstab",
             "fstab.samsungexynos7885",
             "init.recovery.service.rc",
+            "init.recovery.samsungexynos7885.rc",
             "init.recovery.usb.rc",
             "ueventd.samsungexynos7885.rc",
             "sbin/recovery",
@@ -176,6 +177,7 @@ def main() -> int:
         "etc/recovery.fstab",
         "fstab.samsungexynos7885",
         "init.recovery.service.rc",
+        "init.recovery.samsungexynos7885.rc",
         "init.recovery.usb.rc",
         "ueventd.samsungexynos7885.rc",
         "sbin/recovery",
@@ -192,6 +194,12 @@ def main() -> int:
     service_rc = payloads.get("init.recovery.service.rc", b"").decode(errors="ignore")
     if "service recovery /sbin/recovery" not in service_rc:
         errors.append("generated service rc does not start /sbin/recovery")
+
+    hardware_rc = payloads.get(
+        "init.recovery.samsungexynos7885.rc", b""
+    ).decode(errors="ignore")
+    if "start set_permissive" not in hardware_rc:
+        errors.append("hardware recovery rc does not start set_permissive")
 
     fstab = payloads.get("etc/recovery.fstab", b"").decode(errors="ignore")
     for forbidden in ("/carrier", "/external_sd", "/usb-otg"):
@@ -232,7 +240,6 @@ def main() -> int:
     for obsolete in (
         "recovery/root/init.rc",
         "recovery/root/init.recovery.service.rc",
-        "recovery/root/init.recovery.samsungexynos7885.rc",
         "recovery/root/sbin/j720f_diag.sh",
     ):
         if (args.tree / obsolete).exists():
