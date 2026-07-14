@@ -171,6 +171,19 @@ def main() -> int:
         listing, payloads = [], {}
 
     normalized = {item.lstrip("./") for item in listing}
+
+    required_mountpoints = {
+        "cache",
+        "vendor",
+        "odm",
+        "efs",
+        "cpefs",
+        "preload",
+        "omr",
+    }
+    for path in sorted(required_mountpoints - normalized):
+        errors.append(f"generated ramdisk is missing mount point: /{path}")
+
     required = {
         "init",
         "default.prop",
