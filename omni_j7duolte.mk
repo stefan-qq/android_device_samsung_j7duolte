@@ -14,7 +14,3 @@ PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
     ro.adb.secure=0 \
     ro.debuggable=1 \
     persist.sys.usb.config=mtp,adb
-
-# Native post-UI ConfigFS mount diagnostic.
-PRODUCT_PACKAGES += \
-    j720f_configfs_mount

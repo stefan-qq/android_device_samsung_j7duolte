@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the source-built donor-era TWRP 3.3 image for SM-J720F."""
+"""Audit the stock-Android-10-base TWRP 3.3 image for SM-J720F."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import struct
@@ -18,10 +19,19 @@ LIMIT = 39_845_888
 PAGE = 2048
 EXPECTED_KERNEL_SHA256 = "f91660e294f4532d266d23f386f99f4e9c290859154236d82e5280af9f11d268"
 EXPECTED_DT_SHA256 = "25fd9f99fcb520b117475c812302afdfd53f8f36dbcda6a9416429b2401ddafb"
-TRAILER_MARKER = b"SEANDROIDENFORCE"
+EXPECTED_STOCK_HASHES = {
+    "system/bin/init": "5b319a2a88742dd521bf041253dc7709d59206c5972023b398ea528396fa8da2",
+    "system/bin/adbd": "e5a1dff495b94d469ec4cfcda60efbc2a674c769acbf7c6447f5e994542ee84a",
+    "sepolicy": "310ecd33e63988390780c913b6036ce4896f9cc6e388daf6270e80720949732e",
+    "ueventd.rc": "c445126003ec52d30cdb0615fbc9507ba726044b54f0ff2aac89ffba2da3e792",
+    "plat_file_contexts": "813a3998fda03cd75947028da5f60968332696f6e3c09d92882f7aebf035d9df",
+    "plat_property_contexts": "af9d89be335803791f42c6b9d850d3f886d753b8e4099edd7e1e3386784c67d4",
+    "vendor_file_contexts": "fc57a5385988d5ce41e1cc61f8ac906ed8a0d77cc519eb39039b3ea6ccad8866",
+    "vendor_property_contexts": "fe1a8770659e4d633261ed03a0f362f7eab238498a94959739bc459ac3892766",
+}
 
 
-def align(value: int, page: int) -> int:
+def align(value: int, page: int = PAGE) -> int:
     return (value + page - 1) // page * page
 
 
@@ -29,10 +39,11 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def parse_header(blob: bytes) -> dict[str, object]:
+def parse_image(blob: bytes) -> tuple[dict[str, object], bytes, bytes, bytes]:
     if blob[:8] != b"ANDROID!":
         raise ValueError("not a legacy Android boot image")
 
+    values = struct.unpack_from("<10I", blob, 8)
     (
         kernel_size,
         kernel_addr,
@@ -44,9 +55,9 @@ def parse_header(blob: bytes) -> dict[str, object]:
         page_size,
         dt_size,
         _unused,
-    ) = struct.unpack_from("<10I", blob, 8)
+    ) = values
 
-    return {
+    header = {
         "kernel_size": kernel_size,
         "kernel_addr": kernel_addr,
         "ramdisk_size": ramdisk_size,
@@ -60,59 +71,44 @@ def parse_header(blob: bytes) -> dict[str, object]:
         "cmdline": blob[64:576].split(b"\0", 1)[0].decode("ascii", "replace"),
     }
 
+    pos = page_size
+    kernel = blob[pos : pos + kernel_size]
+    pos = align(pos + kernel_size, page_size)
+    ramdisk = blob[pos : pos + ramdisk_size]
+    pos = align(pos + ramdisk_size, page_size)
+    pos = align(pos + second_size, page_size)
+    dt = blob[pos : pos + dt_size]
+    return header, kernel, ramdisk, dt
 
-def extract_ramdisk(ramdisk: bytes) -> tuple[list[str], dict[str, bytes]]:
+
+def extract_ramdisk(ramdisk: bytes, root: Path) -> list[str]:
     if not ramdisk.startswith(b"\x1f\x8b"):
         raise ValueError("ramdisk is not gzip-compressed")
     if shutil.which("cpio") is None:
         raise ValueError("cpio is required")
 
-    with tempfile.TemporaryDirectory(prefix="j720f-legacy-audit-") as temp:
-        base = Path(temp)
-        cpio_data = gzip.decompress(ramdisk)
-        cpio_path = base / "ramdisk.cpio"
-        cpio_path.write_bytes(cpio_data)
+    cpio_data = gzip.decompress(ramdisk)
+    listing = subprocess.run(
+        ["cpio", "-it"],
+        input=cpio_data,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    ).stdout.decode(errors="replace").splitlines()
 
-        listing = subprocess.run(
-            ["cpio", "-it"],
-            cwd=base,
-            input=cpio_data,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-        ).stdout.decode(errors="replace").splitlines()
+    root.mkdir()
+    subprocess.run(
+        ["cpio", "-idm", "--quiet", "--no-absolute-filenames"],
+        cwd=root,
+        input=cpio_data,
+        check=True,
+    )
+    return listing
 
-        root = base / "root"
-        root.mkdir()
-        subprocess.run(
-            ["cpio", "-idm", "--quiet"],
-            cwd=root,
-            input=cpio_data,
-            check=True,
-        )
 
-        payloads: dict[str, bytes] = {}
-        for relative in (
-            "init",
-            "default.prop",
-            "etc/recovery.fstab",
-            "fstab.samsungexynos7885",
-            "init.recovery.service.rc",
-            "init.recovery.samsungexynos7885.rc",
-            "init.recovery.usb.rc",
-            "ueventd.samsungexynos7885.rc",
-            "sbin/recovery",
-            "sbin/adbd",
-            "sbin/j720f_usb.sh",
-            "sbin/j720f_configfs_mount",
-            "twres/portrait.xml",
-            "sbin/libminuitwrp.so",
-        ):
-            path = root / relative
-            if path.is_file():
-                payloads[relative] = path.read_bytes()
-
-        return listing, payloads
+def read_text(root: Path, relative: str) -> str:
+    path = root / relative
+    return path.read_text(errors="ignore") if path.is_file() else ""
 
 
 def main() -> int:
@@ -127,7 +123,7 @@ def main() -> int:
     blob = args.image.read_bytes()
 
     try:
-        header = parse_header(blob)
+        header, kernel, ramdisk, dt = parse_image(blob)
     except ValueError as exc:
         raise SystemExit(str(exc))
 
@@ -147,219 +143,136 @@ def main() -> int:
         if header[key] != expected:
             errors.append(f"header {key}={header[key]!r}; expected {expected!r}")
 
-    cmdline = str(header["cmdline"]).split()
     for token in ("androidboot.selinux=permissive", "enforcing=0"):
-        if token not in cmdline:
+        if token not in str(header["cmdline"]).split():
             errors.append(f"kernel command line is missing {token}")
-
-    pos = PAGE
-    kernel = blob[pos : pos + int(header["kernel_size"])]
-    pos = align(pos + int(header["kernel_size"]), PAGE)
-    ramdisk = blob[pos : pos + int(header["ramdisk_size"])]
-    pos = align(pos + int(header["ramdisk_size"]), PAGE)
-    pos = align(pos + int(header["second_size"]), PAGE)
-    dt = blob[pos : pos + int(header["dt_size"])]
 
     if digest(kernel) != EXPECTED_KERNEL_SHA256:
         errors.append("kernel differs from the exact J720F Android 10 stock kernel")
     if digest(dt) != EXPECTED_DT_SHA256:
         errors.append("DT differs from the exact J720F Android 10 stock DT")
-    if TRAILER_MARKER not in blob[-2048:]:
-        errors.append("Samsung recovery trailer is missing")
 
-    try:
-        listing, payloads = extract_ramdisk(ramdisk)
-    except Exception as exc:
-        errors.append(f"ramdisk inspection failed: {exc}")
-        listing, payloads = [], {}
+    trailer_path = args.tree / "prebuilt/samsung-recovery-trailer.bin"
+    trailer = trailer_path.read_bytes()
+    if not blob.endswith(trailer):
+        errors.append("exact stock Samsung recovery trailer is missing")
 
-    normalized = {item.lstrip("./") for item in listing}
+    with tempfile.TemporaryDirectory(prefix="j720f-stockbase-audit-") as temp:
+        root = Path(temp) / "root"
+        try:
+            listing = extract_ramdisk(ramdisk, root)
+        except Exception as exc:
+            errors.append(f"ramdisk inspection failed: {exc}")
+            listing = []
 
-    required_mountpoints = {
-        "cache",
-        "vendor",
-        "odm",
-        "efs",
-        "cpefs",
-        "preload",
-        "omr",
-    }
-    for path in sorted(required_mountpoints - normalized):
-        errors.append(f"generated ramdisk is missing mount point: /{path}")
+        normalized = {item.lstrip("./") for item in listing}
 
-    required = {
-        "init",
-        "default.prop",
-        "etc/recovery.fstab",
-        "fstab.samsungexynos7885",
-        "init.recovery.service.rc",
-        "init.recovery.samsungexynos7885.rc",
-        "init.recovery.usb.rc",
-        "ueventd.samsungexynos7885.rc",
-        "sbin/recovery",
-        "sbin/adbd",
-        "sbin/j720f_usb.sh",
-        "sbin/j720f_configfs_mount",
-        "twres/portrait.xml",
-        "sbin/libminuitwrp.so",
-    }
-    for path in sorted(required - normalized):
-        errors.append(f"generated ramdisk is missing {path}")
+        required_dirs = {
+            "cache",
+            "vendor",
+            "odm",
+            "efs",
+            "cpefs",
+            "preload",
+            "omr",
+            "sbin",
+            "system/bin",
+            "system/lib64",
+            "twres",
+        }
+        for relative in sorted(required_dirs):
+            if not (root / relative).is_dir():
+                errors.append(f"ramdisk is missing directory: /{relative}")
 
-    recovery = payloads.get("sbin/recovery", b"")
-    if b"3.3.0-0" not in recovery:
-        errors.append("recovery executable is not TWRP 3.3.0-0")
+        required_files = {
+            "init.rc",
+            "prop.default",
+            "sepolicy",
+            "ueventd.rc",
+            "fstab.samsungexynos7885",
+            "system/bin/init",
+            "system/bin/adbd",
+            "system/bin/linker64",
+            "system/etc/recovery.fstab",
+            "sbin/recovery",
+            "sbin/libminuitwrp.so",
+            "twres/portrait.xml",
+        }
+        for relative in sorted(required_files):
+            if not (root / relative).is_file():
+                errors.append(f"ramdisk is missing file: /{relative}")
 
-    service_rc = payloads.get("init.recovery.service.rc", b"").decode(errors="ignore")
-    if "service recovery /sbin/recovery" not in service_rc:
-        errors.append("generated service rc does not start /sbin/recovery")
+        init_link = root / "init"
+        if not init_link.is_symlink() or os.readlink(init_link) != "/system/bin/init":
+            errors.append("/init is not the stock /system/bin/init symlink")
 
-    hardware_rc = payloads.get(
-        "init.recovery.samsungexynos7885.rc", b""
-    ).decode(errors="ignore")
-    if "start set_permissive" not in hardware_rc:
-        errors.append("hardware recovery rc does not start set_permissive")
+        default_link = root / "default.prop"
+        if not default_link.is_symlink() or os.readlink(default_link) != "prop.default":
+            errors.append("/default.prop is not the stock prop.default symlink")
 
-    for forbidden_line in (
-        "service j720f_usb_manual",
-        "keycodes 114 115",
-    ):
-        if forbidden_line in hardware_rc:
-            errors.append(
-                f"obsolete USB keychord remains: {forbidden_line}"
-            )
+        for relative, expected in EXPECTED_STOCK_HASHES.items():
+            path = root / relative
+            if not path.is_file() or digest(path.read_bytes()) != expected:
+                errors.append(f"stock Android 10 component differs: /{relative}")
 
-    usb_helper = payloads.get("sbin/j720f_usb.sh", b"").decode(
-        errors="ignore"
-    )
-    for required_line in (
-        'CONFIG_ROOT="$(cat /tmp/j720f-configfs-root 2>/dev/null)"',
-        'G="$CONFIG_ROOT/usb_gadget/g1"',
-        "configfs-mounted",
-        "functions/ffs.adb",
-        "setprop ctl.restart adbd",
-        "sys.usb.ffs.ready",
-        "13600000.dwc3",
-        "j720f-usb-current",
-        "/sbin/j720f_configfs_mount",
-        "j720f-configfs-root",
-        "native-configfs-failed",
-        "ffs-timeout",
-        "bind-failed",
-    ):
-        if required_line not in usb_helper:
-            errors.append(
-                f"manual ConfigFS helper is missing: {required_line}"
-            )
+        recovery = (root / "sbin/recovery").read_bytes() if (root / "sbin/recovery").is_file() else b""
+        if b"3.3.0-0" not in recovery:
+            errors.append("/sbin/recovery is not TWRP 3.3.0-0")
 
-    if "functions/adb.0" in usb_helper:
-        errors.append("manual USB helper recreates duplicate adb.0")
-
-    native_mount = payloads.get("sbin/j720f_configfs_mount", b"")
-    if not native_mount.startswith(b"\x7fELF"):
-        errors.append("native ConfigFS mount helper is not an ELF executable")
-
-    product = (args.tree / "omni_j7duolte.mk").read_text(
-        errors="ignore"
-    )
-    if "j720f_configfs_mount" not in product:
-        errors.append(
-            "omni_j7duolte.mk does not package j720f_configfs_mount"
+        init_rc = read_text(root, "init.rc")
+        required_init = (
+            "service recovery /sbin/recovery",
+            "service adbd /system/bin/adbd",
+            "setprop sys.usb.configfs 1",
+            "setprop sys.usb.controller 13600000.dwc3",
+            "mount configfs none /sys/kernel/config",
+            "functions/ffs.adb",
+            "mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000",
+            "on property:sys.usb.config=mtp,adb",
+            "on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1",
+            "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}",
         )
+        for line in required_init:
+            if line not in init_rc:
+                errors.append(f"stock-base init.rc is missing: {line}")
+        if "functions/adb.0" in init_rc:
+            errors.append("stock-base init.rc contains duplicate adb.0")
 
-    portrait = payloads.get("twres/portrait.xml", b"").decode(
-        errors="ignore"
-    )
-    for required_line in (
-        'name="Start J720F USB/ADB"',
-        '<action function="cmd">/sbin/j720f_usb.sh</action>',
-    ):
-        if required_line not in portrait:
-            errors.append(
-                f"TWRP Advanced page is missing: {required_line}"
-            )
+        properties = read_text(root, "prop.default")
+        for line in (
+            "ro.secure=0",
+            "ro.adb.secure=0",
+            "ro.debuggable=1",
+            "persist.sys.usb.config=adb",
+        ):
+            if line not in properties.splitlines():
+                errors.append(f"stock-base properties are missing: {line}")
 
-    fstab = payloads.get("etc/recovery.fstab", b"").decode(errors="ignore")
-    for forbidden in ("/carrier", "/external_sd", "/usb-otg"):
-        if forbidden in fstab:
-            errors.append(f"recovery fstab contains forbidden entry: {forbidden}")
-    for required_mount in ("/system", "/vendor", "/odm", "/data", "/cache", "/efs"):
-        if required_mount not in fstab:
-            errors.append(f"recovery fstab is missing {required_mount}")
+        fstab = read_text(root, "system/etc/recovery.fstab")
+        for forbidden in ("/carrier", "/external_sd", "/usb-otg"):
+            if forbidden in fstab:
+                errors.append(f"TWRP fstab contains forbidden entry: {forbidden}")
+        for mountpoint in ("/system", "/vendor", "/odm", "/data", "/cache", "/efs"):
+            if mountpoint not in fstab:
+                errors.append(f"TWRP fstab is missing {mountpoint}")
 
-    usb = payloads.get("init.recovery.usb.rc", b"").decode(errors="ignore")
-    if "on early-init\n    write /sys/fs/selinux/enforce 0" not in usb:
-        errors.append("USB init rc does not force permissive during early-init")
+        for obsolete in (
+            "sbin/j720f_usb.sh",
+            "sbin/j720f_configfs_mount",
+        ):
+            if obsolete in normalized or (root / obsolete).exists():
+                errors.append(f"obsolete USB diagnostic remains: /{obsolete}")
 
-    for forbidden_line in (
-        "setprop sys.usb.configfs 1",
-        "setprop sys.usb.controller 13600000.dwc3",
-        "mount configfs none /sys/kernel/config",
-    ):
-        if forbidden_line in usb:
-            errors.append(
-                f"obsolete init-owned ConfigFS setup remains: {forbidden_line}"
-            )
+        portrait = read_text(root, "twres/portrait.xml")
+        if "Start J720F USB/ADB" in portrait or "j720f_usb.sh" in portrait:
+            errors.append("obsolete USB diagnostic button remains in TWRP theme")
 
-    permissive_service = """service j720f_permissive /sbin/permissive.sh
-    class core
-    user root
-    group root
-    disabled
-    oneshot
-    seclabel u:r:init:s0
-"""
-    if "on init\n    start j720f_permissive" not in usb:
-        errors.append("USB init rc does not start j720f_permissive during init")
-    if permissive_service not in usb:
-        errors.append("USB init rc does not run the permissive helper in init domain")
-    for required_line in (
-        "write /sys/class/android_usb/android0/idVendor 04E8",
-        "write /sys/class/android_usb/android0/idProduct 6860",
-        "write /sys/class/android_usb/android0/functions adb",
-        "write /sys/class/android_usb/android0/functions mtp,adb",
-        "write /sys/class/android_usb/android0/enable 1",
-        "start adbd",
-    ):
-        if required_line not in usb:
-            errors.append(f"legacy USB rc is missing: {required_line}")
-    for forbidden in ("usb_gadget", "functions/adb.0", "functions/ffs.adb"):
-        if forbidden in usb:
-            errors.append(f"legacy USB rc unexpectedly contains {forbidden}")
+        args.out_dir.mkdir(parents=True, exist_ok=True)
+        (args.out_dir / "ramdisk-files.txt").write_text("\n".join(listing) + "\n")
 
-    board = (args.tree / "BoardConfig.mk").read_text(errors="ignore")
-    for required_setting in (
-        'TARGET_RECOVERY_PIXEL_FORMAT := "ABGR_8888"',
-        "RECOVERY_GRAPHICS_USE_LINELENGTH := true",
-        "TW_USE_NEW_MINADBD := true",
-        "TW_INCLUDE_CRYPTO := true",
-        "TW_CRYPTO_USE_SYSTEM_VOLD := true",
-        "BOARD_SEPOLICY_DIRS += $(DEVICE_PATH)/sepolicy",
-    ):
-        if required_setting not in board:
-            errors.append(f"BoardConfig.mk is missing: {required_setting}")
-    if "TW_EXCLUDE_MTP" in board:
-        errors.append("MTP is still excluded in BoardConfig.mk")
-
-    recovery_policy_path = args.tree / "sepolicy/recovery.te"
-    if not recovery_policy_path.is_file():
-        errors.append("device recovery SELinux policy is missing")
-    else:
-        recovery_policy = recovery_policy_path.read_text(errors="ignore")
-        if "permissive recovery;" not in recovery_policy:
-            errors.append("recovery SELinux domain is not permissive")
-
-    for obsolete in (
-        "recovery/root/init.rc",
-        "recovery/root/init.recovery.service.rc",
-        "recovery/root/sbin/j720f_diag.sh",
-    ):
-        if (args.tree / obsolete).exists():
-            errors.append(f"TWRP 9 bring-up override remains on legacy branch: {obsolete}")
-
-    args.out_dir.mkdir(parents=True, exist_ok=True)
     report = {
         "image": str(args.image),
+        "layout": "stock Android 10 base with source-built TWRP 3.3 payload",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),
@@ -370,8 +283,8 @@ def main() -> int:
         "errors": errors,
         "warnings": warnings,
     }
+    args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "audit.json").write_text(json.dumps(report, indent=2) + "\n")
-    (args.out_dir / "ramdisk-files.txt").write_text("\n".join(listing) + "\n")
     print(json.dumps(report, indent=2))
     return 1 if errors else 0
 
