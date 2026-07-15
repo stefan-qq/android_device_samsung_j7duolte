@@ -36,10 +36,9 @@ if [ -e /sys/class/android_usb/android0/enable ]; then
     echo 0 > /sys/class/android_usb/android0/enable 2>/dev/null || true
 fi
 
-mkdir -p /sys/kernel/config
-mount -t configfs none /sys/kernel/config 2>/dev/null || true
-
+[ -d /sys/kernel/config ] || fail configfs-mountpoint-missing
 [ -d /sys/kernel/config/usb_gadget ] || fail configfs-missing
+mark configfs-mounted
 
 mkdir -p "$G" || fail gadget-create-failed
 

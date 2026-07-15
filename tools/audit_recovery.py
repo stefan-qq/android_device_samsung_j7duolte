@@ -237,6 +237,7 @@ def main() -> int:
         "sys.usb.ffs.ready",
         "13600000.dwc3",
         "j720f-usb-current",
+        "configfs-mounted",
         "ffs-timeout",
         "bind-failed",
     ):
@@ -271,6 +272,13 @@ def main() -> int:
     usb = payloads.get("init.recovery.usb.rc", b"").decode(errors="ignore")
     if "on early-init\n    write /sys/fs/selinux/enforce 0" not in usb:
         errors.append("USB init rc does not force permissive during early-init")
+    for required_line in (
+        "setprop sys.usb.configfs 1",
+        "setprop sys.usb.controller 13600000.dwc3",
+        "mount configfs none /sys/kernel/config",
+    ):
+        if required_line not in usb:
+            errors.append(f"USB init rc is missing: {required_line}")
 
     permissive_service = """service j720f_permissive /sbin/permissive.sh
     class core
