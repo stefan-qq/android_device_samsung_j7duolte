@@ -3,8 +3,6 @@
 
 on early-init
     write /sys/fs/selinux/enforce 0
-    setprop sys.usb.configfs 1
-    setprop sys.usb.controller 13600000.dwc3
 
 # Run the permissive helper in init's SELinux domain.
 # The donor service runs as recovery and cannot change enforcement.
@@ -24,7 +22,6 @@ service j720f_permissive /sbin/permissive.sh
 # This intentionally avoids ConfigFS and creates only one ADB interface.
 
 on fs
-    mount configfs none /sys/kernel/config
     write /sys/class/android_usb/android0/enable 0
     write /sys/class/android_usb/android0/idVendor 04E8
     write /sys/class/android_usb/android0/idProduct 6860

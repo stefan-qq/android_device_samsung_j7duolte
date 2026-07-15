@@ -104,6 +104,7 @@ def extract_ramdisk(ramdisk: bytes) -> tuple[list[str], dict[str, bytes]]:
             "sbin/recovery",
             "sbin/adbd",
             "sbin/j720f_usb.sh",
+            "sbin/j720f_configfs_mount",
             "twres/portrait.xml",
             "sbin/libminuitwrp.so",
         ):
@@ -198,6 +199,7 @@ def main() -> int:
         "sbin/recovery",
         "sbin/adbd",
         "sbin/j720f_usb.sh",
+        "sbin/j720f_configfs_mount",
         "twres/portrait.xml",
         "sbin/libminuitwrp.so",
     }
@@ -237,7 +239,9 @@ def main() -> int:
         "sys.usb.ffs.ready",
         "13600000.dwc3",
         "j720f-usb-current",
-        "configfs-mounted",
+        "/sbin/j720f_configfs_mount",
+        "j720f-configfs-root",
+        "native-configfs-failed",
         "ffs-timeout",
         "bind-failed",
     ):
@@ -248,6 +252,18 @@ def main() -> int:
 
     if "functions/adb.0" in usb_helper:
         errors.append("manual USB helper recreates duplicate adb.0")
+
+    native_mount = payloads.get("sbin/j720f_configfs_mount", b"")
+    if not native_mount.startswith(b"\x7fELF"):
+        errors.append("native ConfigFS mount helper is not an ELF executable")
+
+    product = (args.tree / "omni_j7duolte.mk").read_text(
+        errors="ignore"
+    )
+    if "j720f_configfs_mount" not in product:
+        errors.append(
+            "omni_j7duolte.mk does not package j720f_configfs_mount"
+        )
 
     portrait = payloads.get("twres/portrait.xml", b"").decode(
         errors="ignore"
@@ -272,13 +288,6 @@ def main() -> int:
     usb = payloads.get("init.recovery.usb.rc", b"").decode(errors="ignore")
     if "on early-init\n    write /sys/fs/selinux/enforce 0" not in usb:
         errors.append("USB init rc does not force permissive during early-init")
-    for required_line in (
-        "setprop sys.usb.configfs 1",
-        "setprop sys.usb.controller 13600000.dwc3",
-        "mount configfs none /sys/kernel/config",
-    ):
-        if required_line not in usb:
-            errors.append(f"USB init rc is missing: {required_line}")
 
     permissive_service = """service j720f_permissive /sbin/permissive.sh
     class core

@@ -4,8 +4,6 @@ LOG=/tmp/j720f-usb.log
 exec > "$LOG" 2>&1
 set -x
 
-G=/sys/kernel/config/usb_gadget/g1
-
 mark()
 {
     STAGE="$1"
@@ -36,8 +34,18 @@ if [ -e /sys/class/android_usb/android0/enable ]; then
     echo 0 > /sys/class/android_usb/android0/enable 2>/dev/null || true
 fi
 
-[ -d /sys/kernel/config ] || fail configfs-mountpoint-missing
-[ -d /sys/kernel/config/usb_gadget ] || fail configfs-missing
+rm -f /tmp/j720f-configfs-root 2>/dev/null || true
+
+if ! /sbin/j720f_configfs_mount; then
+    fail native-configfs-failed
+fi
+
+CONFIG_ROOT="$(cat /tmp/j720f-configfs-root 2>/dev/null)"
+
+[ -n "$CONFIG_ROOT" ] || fail native-root-missing
+[ -d "$CONFIG_ROOT/usb_gadget" ] || fail configfs-missing
+
+G="$CONFIG_ROOT/usb_gadget/g1"
 mark configfs-mounted
 
 mkdir -p "$G" || fail gadget-create-failed
