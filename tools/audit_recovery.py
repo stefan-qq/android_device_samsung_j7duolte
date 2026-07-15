@@ -104,6 +104,7 @@ def extract_ramdisk(ramdisk: bytes) -> tuple[list[str], dict[str, bytes]]:
             "sbin/recovery",
             "sbin/adbd",
             "sbin/j720f_usb.sh",
+            "twres/portrait.xml",
             "sbin/libminuitwrp.so",
         ):
             path = root / relative
@@ -197,6 +198,7 @@ def main() -> int:
         "sbin/recovery",
         "sbin/adbd",
         "sbin/j720f_usb.sh",
+        "twres/portrait.xml",
         "sbin/libminuitwrp.so",
     }
     for path in sorted(required - normalized):
@@ -216,16 +218,13 @@ def main() -> int:
     if "start set_permissive" not in hardware_rc:
         errors.append("hardware recovery rc does not start set_permissive")
 
-    for required_line in (
-        "service j720f_usb_manual /sbin/j720f_usb.sh",
-        "disabled",
-        "oneshot",
-        "seclabel u:r:recovery:s0",
+    for forbidden_line in (
+        "service j720f_usb_manual",
         "keycodes 114 115",
     ):
-        if required_line not in hardware_rc:
+        if forbidden_line in hardware_rc:
             errors.append(
-                f"manual USB keychord service is missing: {required_line}"
+                f"obsolete USB keychord remains: {forbidden_line}"
             )
 
     usb_helper = payloads.get("sbin/j720f_usb.sh", b"").decode(
@@ -248,6 +247,18 @@ def main() -> int:
 
     if "functions/adb.0" in usb_helper:
         errors.append("manual USB helper recreates duplicate adb.0")
+
+    portrait = payloads.get("twres/portrait.xml", b"").decode(
+        errors="ignore"
+    )
+    for required_line in (
+        'name="Start J720F USB/ADB"',
+        '<action function="cmd">/sbin/j720f_usb.sh</action>',
+    ):
+        if required_line not in portrait:
+            errors.append(
+                f"TWRP Advanced page is missing: {required_line}"
+            )
 
     fstab = payloads.get("etc/recovery.fstab", b"").decode(errors="ignore")
     for forbidden in ("/carrier", "/external_sd", "/usb-otg"):
