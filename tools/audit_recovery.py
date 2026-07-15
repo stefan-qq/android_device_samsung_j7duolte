@@ -233,7 +233,9 @@ def main() -> int:
         errors="ignore"
     )
     for required_line in (
-        "/sys/kernel/config/usb_gadget/g1",
+        'CONFIG_ROOT="$(cat /tmp/j720f-configfs-root 2>/dev/null)"',
+        'G="$CONFIG_ROOT/usb_gadget/g1"',
+        "configfs-mounted",
         "functions/ffs.adb",
         "setprop ctl.restart adbd",
         "sys.usb.ffs.ready",
@@ -288,6 +290,16 @@ def main() -> int:
     usb = payloads.get("init.recovery.usb.rc", b"").decode(errors="ignore")
     if "on early-init\n    write /sys/fs/selinux/enforce 0" not in usb:
         errors.append("USB init rc does not force permissive during early-init")
+
+    for forbidden_line in (
+        "setprop sys.usb.configfs 1",
+        "setprop sys.usb.controller 13600000.dwc3",
+        "mount configfs none /sys/kernel/config",
+    ):
+        if forbidden_line in usb:
+            errors.append(
+                f"obsolete init-owned ConfigFS setup remains: {forbidden_line}"
+            )
 
     permissive_service = """service j720f_permissive /sbin/permissive.sh
     class core
