@@ -4,3 +4,15 @@
 
 on init
     start set_permissive
+
+# Manual USB diagnostic. Hold Volume Down and Volume Up together after
+# TWRP reaches the main screen. Nothing here runs during normal startup.
+
+service j720f_usb_manual /sbin/j720f_usb.sh
+    class core
+    user root
+    group root shell
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+    keycodes 114 115

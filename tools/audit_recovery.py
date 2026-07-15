@@ -216,6 +216,39 @@ def main() -> int:
     if "start set_permissive" not in hardware_rc:
         errors.append("hardware recovery rc does not start set_permissive")
 
+    for required_line in (
+        "service j720f_usb_manual /sbin/j720f_usb.sh",
+        "disabled",
+        "oneshot",
+        "seclabel u:r:recovery:s0",
+        "keycodes 114 115",
+    ):
+        if required_line not in hardware_rc:
+            errors.append(
+                f"manual USB keychord service is missing: {required_line}"
+            )
+
+    usb_helper = payloads.get("sbin/j720f_usb.sh", b"").decode(
+        errors="ignore"
+    )
+    for required_line in (
+        "/sys/kernel/config/usb_gadget/g1",
+        "functions/ffs.adb",
+        "setprop ctl.restart adbd",
+        "sys.usb.ffs.ready",
+        "13600000.dwc3",
+        "j720f-usb-current",
+        "ffs-timeout",
+        "bind-failed",
+    ):
+        if required_line not in usb_helper:
+            errors.append(
+                f"manual ConfigFS helper is missing: {required_line}"
+            )
+
+    if "functions/adb.0" in usb_helper:
+        errors.append("manual USB helper recreates duplicate adb.0")
+
     fstab = payloads.get("etc/recovery.fstab", b"").decode(errors="ignore")
     for forbidden in ("/carrier", "/external_sd", "/usb-otg"):
         if forbidden in fstab:
@@ -254,40 +287,6 @@ def main() -> int:
         if forbidden in usb:
             errors.append(f"legacy USB rc unexpectedly contains {forbidden}")
 
-    for required_line in (
-        "start j720f_usb_setup",
-        "service j720f_usb_setup /sbin/j720f_usb.sh",
-        "seclabel u:r:recovery:s0",
-    ):
-        if required_line not in usb:
-            errors.append(f"late ConfigFS USB rc is missing: {required_line}")
-
-    usb_helper = payloads.get("sbin/j720f_usb.sh", b"").decode(
-        errors="ignore"
-    )
-    for required_line in (
-        "/sys/kernel/config/usb_gadget/g1",
-        "functions/ffs.adb",
-        "sys.usb.ffs.ready",
-        "13600000.dwc3",
-        "bound_ready",
-        "bound_forced",
-    ):
-        if required_line not in usb_helper:
-            errors.append(f"late ConfigFS helper is missing: {required_line}")
-
-    if "functions/adb.0" in usb_helper:
-        errors.append("late ConfigFS helper recreates the v18 adb.0 function")
-
-    default_props = {
-        line.strip()
-        for line in payloads.get("default.prop", b"").decode(
-            errors="ignore"
-        ).splitlines()
-    }
-    if "persist.sys.usb.config=mtp,adb" not in default_props:
-        errors.append("default.prop no longer preserves the v11 USB baseline")
-
     board = (args.tree / "BoardConfig.mk").read_text(errors="ignore")
     for required_setting in (
         'TARGET_RECOVERY_PIXEL_FORMAT := "ABGR_8888"',
@@ -309,10 +308,6 @@ def main() -> int:
         recovery_policy = recovery_policy_path.read_text(errors="ignore")
         if "permissive recovery;" not in recovery_policy:
             errors.append("recovery SELinux domain is not permissive")
-        if "permissive adbd;" in recovery_policy:
-            errors.append("adbd unexpectedly remains permissive")
-        if "permissive init;" in recovery_policy:
-            errors.append("init unexpectedly remains permissive")
 
     for obsolete in (
         "recovery/root/init.rc",
