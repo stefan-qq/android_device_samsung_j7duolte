@@ -115,73 +115,13 @@ def copy_entry(source: Path, destination: Path) -> None:
 
 
 def prune_stock_userspace(stock_root: Path) -> None:
-    keep_system_bin = {
-        "adbd",
-        "init",
-        "linker64",
-        "ueventd",
-    }
-    keep_system_lib64 = {
-        "ld-android.so",
-        "libadbd.so",
-        "libadbd_services.so",
-        "libasyncio.so",
-        "libbacktrace.so",
-        "libbase.so",
-        "libbootloader_message.so",
-        "libc++.so",
-        "libc.so",
-        "libcap.so",
-        "libcgrouprc.so",
-        "libcrypto.so",
-        "libcrypto_utils.so",
-        "libcutils.so",
-        "libdl.so",
-        "libext2_uuid.so",
-        "libext4_utils.so",
-        "libfec.so",
-        "libfs_mgr.so",
-        "libfscrypt.so",
-        "libgsi.so",
-        "libhidl-gen-utils.so",
-        "libjsoncpp.so",
-        "libkeyutils.so",
-        "liblog.so",
-        "liblogwrap.so",
-        "liblp.so",
-        "liblzma.so",
-        "libm.so",
-        "libmdnssd.so",
-        "libminijail.so",
-        "libpackagelistparser.so",
-        "libpcre2.so",
-        "libprocessgroup.so",
-        "libprocessgroup_setup.so",
-        "libselinux.so",
-        "libsparse.so",
-        "libsquashfs_utils.so",
-        "libunwindstack.so",
-        "libz.so",
-    }
-    keep_system_etc = {
-        "cgroups.json",
-        "fota.cer",
-        "ld.config.txt",
-        "security",
-    }
-
-    for directory, keep in (
-        (stock_root / "system/bin", keep_system_bin),
-        (stock_root / "system/lib64", keep_system_lib64),
-        (stock_root / "system/etc", keep_system_etc),
+    """Preserve the stock Android 10 runtime needed by init and adbd."""
+    for path in (
+        stock_root / "system/bin/recovery",
+        stock_root / "res/recovery.do",
     ):
-        for entry in list(directory.iterdir()):
-            if entry.name not in keep:
-                remove_path(entry)
-
-    recovery_do = stock_root / "res/recovery.do"
-    if recovery_do.exists():
-        recovery_do.unlink()
+        if path.exists() or path.is_symlink():
+            remove_path(path)
 
 def overlay_twrp(stock_root: Path, source_root: Path) -> None:
     stock_sbin = stock_root / "sbin"
@@ -236,6 +176,56 @@ def overlay_twrp(stock_root: Path, source_root: Path) -> None:
         if obsolete.exists() or obsolete.is_symlink():
             remove_path(obsolete)
 
+    wrapper = stock_root / "sbin/j720f_recovery_wrapper.sh"
+    wrapper.write_text(
+        "#!/sbin/sh\n"
+        "export PATH=/sbin:/system/bin\n"
+        "export LD_LIBRARY_PATH=/sbin\n"
+        "LOG=/cache/j720f-v22-recovery.log\n"
+        "touch /cache/j720f-v22-wrapper-started\n"
+        "if [ -e /dev/graphics/fb0 ]; then\n"
+        "    touch /cache/j720f-v22-fb0-present\n"
+        "else\n"
+        "    touch /cache/j720f-v22-fb0-missing\n"
+        "fi\n"
+        "if [ -d /dev/input ]; then\n"
+        "    touch /cache/j720f-v22-input-present\n"
+        "else\n"
+        "    touch /cache/j720f-v22-input-missing\n"
+        "fi\n"
+        "{\n"
+        "    echo wrapper-started\n"
+        "    echo ==mounts==\n"
+        "    cat /proc/mounts\n"
+        "    echo ==properties==\n"
+        "    getprop ro.hardware\n"
+        "    getprop ro.build.product\n"
+        "    getprop ro.debuggable\n"
+        "    getprop sys.usb.config\n"
+        "    getprop sys.usb.ffs.ready\n"
+        "    echo ==graphics==\n"
+        "    ls -la /dev/graphics /dev/input /sys/class/graphics 2>&1\n"
+        "    echo ==recovery==\n"
+        "} >> \"$LOG\" 2>&1\n"
+        "/sbin/recovery >> \"$LOG\" 2>&1 &\n"
+        "PID=$!\n"
+        "echo recovery-pid=$PID >> \"$LOG\"\n"
+        "sleep 15\n"
+        "if kill -0 \"$PID\" 2>/dev/null; then\n"
+        "    touch /cache/j720f-v22-recovery-running-15s\n"
+        "    wait \"$PID\"\n"
+        "    RC=$?\n"
+        "else\n"
+        "    wait \"$PID\"\n"
+        "    RC=$?\n"
+        "fi\n"
+        "echo recovery-exit=$RC >> \"$LOG\"\n"
+        "touch \"/cache/j720f-v22-recovery-exit-$RC\"\n"
+        "sync\n"
+        "while true; do sleep 60; done\n"
+    )
+    wrapper.chmod(0o750)
+
     portrait = stock_root / "twres/portrait.xml"
     portrait_text = portrait.read_text(errors="strict")
     portrait_text, count = re.subn(
@@ -255,6 +245,17 @@ def patch_init(root: Path) -> None:
     path = root / "init.rc"
     text = path.read_text()
 
+    on_init = "on init\n"
+    environment = (
+        "on init\n"
+        "    export PATH /sbin:/system/bin\n"
+        "    export LD_LIBRARY_PATH /sbin\n"
+    )
+    if "export LD_LIBRARY_PATH /sbin" not in text:
+        if text.count(on_init) != 1:
+            raise ValueError("stock on-init anchor is not unique")
+        text = text.replace(on_init, environment, 1)
+
     old = "    setprop sys.usb.configfs 1\n"
     new = (
         "    setprop sys.usb.configfs 1\n"
@@ -266,11 +267,41 @@ def patch_init(root: Path) -> None:
         text = text.replace(old, new, 1)
 
     old = "service recovery /system/bin/recovery\n"
-    new = "service recovery /sbin/recovery\n"
+    new = "service recovery /sbin/j720f_recovery_wrapper.sh\n"
     if old in text:
         text = text.replace(old, new, 1)
     elif new not in text:
-        raise ValueError("stock recovery service anchor not found")
+        direct = "service recovery /sbin/recovery\n"
+        if direct in text:
+            text = text.replace(direct, new, 1)
+        else:
+            raise ValueError("stock recovery service anchor not found")
+
+    fs_anchor = (
+        "on fs\n"
+        "    mkdir /dev/usb-ffs 0775 shell shell\n"
+    )
+    fs_replacement = (
+        "on fs\n"
+        "    mount ext4 /dev/block/platform/13500000.dwmmc0/by-name/CACHE /cache\n"
+        "    write /cache/j720f-v22-init-fs reached\n"
+        "    mkdir /dev/usb-ffs 0775 shell shell\n"
+    )
+    if "j720f-v22-init-fs" not in text:
+        if text.count(fs_anchor) != 1:
+            raise ValueError("stock FunctionFS action anchor is not unique")
+        text = text.replace(fs_anchor, fs_replacement, 1)
+
+    boot_anchor = "on boot\n    ifup lo\n"
+    boot_replacement = (
+        "on boot\n"
+        "    write /cache/j720f-v22-init-boot reached\n"
+        "    ifup lo\n"
+    )
+    if "j720f-v22-init-boot" not in text:
+        if text.count(boot_anchor) != 1:
+            raise ValueError("stock boot action anchor is not unique")
+        text = text.replace(boot_anchor, boot_replacement, 1)
 
     adb_start = "on property:sys.usb.config=adb\n    start adbd\n"
     mtp_start = "on property:sys.usb.config=mtp,adb\n    start adbd\n"
