@@ -201,7 +201,6 @@ def main() -> int:
             "system/lib64/libhidlbase.so",
             "system/etc/recovery.fstab",
             "sbin/recovery",
-            "sbin/j720f_recovery_wrapper.sh",
             "sbin/libminuitwrp.so",
             "twres/portrait.xml",
         }
@@ -228,12 +227,17 @@ def main() -> int:
 
         init_rc = read_text(root, "init.rc")
         required_init = (
-            "service recovery /sbin/j720f_recovery_wrapper.sh",
-            "export PATH /sbin:/system/bin",
-            "export LD_LIBRARY_PATH /sbin",
+            "service recovery /sbin/recovery",
+            "setenv PATH /sbin:/system/bin",
+            "setenv LD_LIBRARY_PATH /sbin",
+            "wait /dev/block/platform/13500000.dwmmc0/by-name/CACHE 10",
             "mount ext4 /dev/block/platform/13500000.dwmmc0/by-name/CACHE /cache",
-            "write /cache/j720f-v22-init-fs reached",
-            "write /cache/j720f-v22-init-boot reached",
+            "write /cache/j720f-v23-init-fs reached",
+            "write /cache/j720f-v23-init-boot reached",
+            "write /cache/j720f-v23-ueventd-state ${init.svc.ueventd}",
+            "write /cache/j720f-v23-recovery-running reached",
+            "write /cache/j720f-v23-recovery-stopped reached",
+            "write /cache/j720f-v23-adbd-running reached",
             "service adbd /system/bin/adbd",
             "setprop sys.usb.configfs 1",
             "setprop sys.usb.controller 13600000.dwc3",
@@ -250,20 +254,16 @@ def main() -> int:
         if "functions/adb.0" in init_rc:
             errors.append("stock-base init.rc contains duplicate adb.0")
 
-        wrapper = read_text(root, "sbin/j720f_recovery_wrapper.sh")
-        for line in (
-            "export PATH=/sbin:/system/bin",
-            "export LD_LIBRARY_PATH=/sbin",
-            "LOG=/cache/j720f-v22-recovery.log",
-            "j720f-v22-wrapper-started",
-            "j720f-v22-fb0-present",
-            "j720f-v22-input-present",
-            "j720f-v22-recovery-running-15s",
-            "/sbin/recovery",
-            "recovery-exit=$RC",
-        ):
-            if line not in wrapper:
-                errors.append(f"recovery wrapper is missing: {line}")
+        if "export LD_LIBRARY_PATH /sbin" in init_rc:
+            errors.append(
+                "global LD_LIBRARY_PATH would poison stock Android 10 services"
+            )
+        if "export PATH /sbin:/system/bin" in init_rc:
+            errors.append(
+                "global TWRP PATH must not be inherited by stock services"
+            )
+        if (root / "sbin/j720f_recovery_wrapper.sh").exists():
+            errors.append("obsolete shell recovery wrapper remains")
 
         if (root / "system/bin/recovery").exists():
             errors.append("unused stock /system/bin/recovery remains")
@@ -302,7 +302,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "preserved stock Android 10 runtime with source-built TWRP 3.3 payload and persistent diagnostics",
+        "layout": "stock Android 10 services with recovery-only TWRP 3.3 environment",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),
