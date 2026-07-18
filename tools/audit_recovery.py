@@ -264,10 +264,16 @@ def main() -> int:
     for rule in (
         "allow recovery vfat:dir create_dir_perms;",
         "allow recovery vfat:file create_file_perms;",
-        "allow recovery rootfs:file create_file_perms;",
         "allow recovery self:netlink_kobject_uevent_socket create_socket_perms;",
     ):
         require_contains(errors, policy, rule, "device recovery policy")
+
+    # Android 7.1 system/sepolicy/domain.te has an unconditional neverallow
+    # that forbids domains from creating or writing rootfs-labelled files.
+    # Keep the audit aligned with the compilable policy and reject any
+    # accidental reintroduction of the forbidden workaround.
+    if "allow recovery rootfs:" in policy:
+        errors.append("device recovery policy contains forbidden rootfs write access")
 
     report = {
         "image": str(args.image),
