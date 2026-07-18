@@ -1,3 +1,16 @@
-# Keep the TWRP userspace permissive while the J720F recovery policy is
-# brought up. Other domains remain governed by the compiled SELinux policy.
+# Keep the legacy TWRP process permissive during bring-up, but also grant the
+# operations that were proven to fail at runtime so functionality does not
+# depend on permissive mode being applied successfully.
 permissive recovery;
+
+# v6 diagnostics proved that VFAT mounts read-write, while creating a file
+# returned EACCES even with uid=0,gid=0,fmask=0000,dmask=0000.
+allow recovery vfat:dir create_dir_perms;
+allow recovery vfat:file create_file_perms;
+
+# TWRP creates /etc/fstab at runtime. /etc is part of the recovery rootfs.
+allow recovery rootfs:dir { add_name search write };
+allow recovery rootfs:file create_file_perms;
+
+# TWRP 3.3's setup_uevent() logs "uevent not root" when socket() is denied.
+allow recovery self:netlink_kobject_uevent_socket create_socket_perms;

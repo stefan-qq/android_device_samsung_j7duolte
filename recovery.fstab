@@ -1,13 +1,18 @@
 # Samsung SM-J720F / j7duolte - PIT-backed TWRP 3.3 recovery fstab
-# External SD is intentionally excluded during bring-up.
 
 /system     ext4  /dev/block/platform/13500000.dwmmc0/by-name/SYSTEM     flags=display=System;backup=1;wipeingui;flashimg=1
 /vendor     ext4  /dev/block/platform/13500000.dwmmc0/by-name/VENDOR     flags=display=Vendor;backup=1;wipeingui
 /odm        ext4  /dev/block/platform/13500000.dwmmc0/by-name/ODM        flags=display=ODM;backup=1;wipeingui
-/data       ext4  /dev/block/platform/13500000.dwmmc0/by-name/USERDATA   flags=display=Data;storage;settingsstorage;backup=1;wipeingui;encryptable=footer;length=-20480
+/data       ext4  /dev/block/platform/13500000.dwmmc0/by-name/USERDATA   flags=display=Data;storage;backup=1;wipeingui;encryptable=footer;length=-20480
 /cache      ext4  /dev/block/platform/13500000.dwmmc0/by-name/CACHE      flags=display=Cache;backup=1;wipeingui
-/efs        ext4  /dev/block/platform/13500000.dwmmc0/by-name/EFS        flags=display=EFS;backup=1
-/cpefs      ext4  /dev/block/platform/13500000.dwmmc0/by-name/CPEFS      flags=display=CPEFS;backup=1
+
+# External microSD. Hot insertion is exposed as mmcblk1/mmcblk1p1 on J720F.
+/external_sd vfat /dev/block/mmcblk1p1 /dev/block/mmcblk1 flags=display="Micro SDcard";storage;settingsstorage;removable
+
+# Back up the radio identity partitions as raw images. Do not mount or format.
+/efs        emmc  /dev/block/platform/13500000.dwmmc0/by-name/EFS        flags=display=EFS;backup=1
+/cpefs      emmc  /dev/block/platform/13500000.dwmmc0/by-name/CPEFS      flags=display=CPEFS;backup=1
+
 /preload    ext4  /dev/block/platform/13500000.dwmmc0/by-name/HIDDEN     flags=display=Preload;backup=1;wipeingui
 /omr        ext4  /dev/block/platform/13500000.dwmmc0/by-name/OMR        flags=display=OMR;backup=1;wipeingui
 

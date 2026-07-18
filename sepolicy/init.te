@@ -1,0 +1,4 @@
+# The stock J720F kernel exposes the USB gadget through ConfigFS. Keep init
+# permissive in this recovery-only engineering build so its early ConfigFS and
+# FunctionFS setup is not blocked by the donor Android 7.1 policy generation.
+permissive init;

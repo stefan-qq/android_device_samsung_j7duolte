@@ -1,9 +1,9 @@
-# Samsung Galaxy J7 Duo (SM-J720F) - donor-era TWRP 3.3 build configuration
+# Samsung Galaxy J7 Duo (SM-J720F) - donor-era TWRP 3.3 configuration
 
 DEVICE_PATH := device/samsung/j7duolte
 
-# Keep the donor generation's generic Exynos recovery platform. This is the
-# userspace configuration proven by v22 to draw and accept touch on J720F.
+# The Android 7.1 recovery userspace is the only architecture proven to draw
+# the UI and accept touch with the exact J720F Android 10 stock kernel and DT.
 BOARD_VENDOR := samsung
 TARGET_BOARD_PLATFORM := exynos5
 TARGET_SOC := exynos7884
@@ -54,7 +54,7 @@ TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery.fstab
 # Device-specific recovery SELinux policy
 BOARD_SEPOLICY_DIRS += $(DEVICE_PATH)/sepolicy
 
-# TWRP 3.3 configuration copied from the exact UI-working donor generation
+# TWRP 3.3 configuration from the exact UI-working v11 generation
 RECOVERY_VARIANT := twrp
 TW_THEME := portrait_hdpi
 TARGET_SCREEN_DENSITY := 320
@@ -68,17 +68,17 @@ TW_HAS_DOWNLOAD_MODE := true
 TW_USE_NEW_MINADBD := true
 TW_EXTRA_LANGUAGES := true
 
-# Android 10 stock userdata uses footer-based encryption. Keep both the donor
-# crypto support and the system-vold path enabled when supported by the source.
+# Keep legacy footer-based FDE support. Do not mix Android 7.1 recovery with
+# Android 10 FBE or system-vold integration; those paths were not functional.
 TW_INCLUDE_CRYPTO := true
-TW_INCLUDE_FBE := true
-TW_CRYPTO_USE_SYSTEM_VOLD := true
 
-# Internal storage lives under /data/media. External SD remains deliberately
-# excluded until the base recovery is stable.
+# Internal storage is /data/media. A removable microSD is also declared in the
+# TWRP fstab and is the settings storage while /data remains encrypted.
 BOARD_HAS_NO_REAL_SDCARD := true
 RECOVERY_SDCARD_ON_DATA := true
 
-# MTP is intentionally enabled in this legacy build.
+# MTP is disabled until USB ADB is proven stable. This also removes the noisy
+# "Unknown MTP message type" path from partition updates.
+TW_EXCLUDE_MTP := true
 TW_EXCLUDE_TWRPAPP := true
 TW_EXCLUDE_SUPERSU := true

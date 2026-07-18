@@ -1,10 +1,9 @@
-# Android-style recovery fstab used by init/vold helpers.
+# Android-style recovery fstab used only by legacy init helpers.
+# TWRP partition handling is defined in /etc/recovery.fstab.
 /dev/block/platform/13500000.dwmmc0/by-name/SYSTEM    /system   ext4  ro,errors=panic                                      wait
 /dev/block/platform/13500000.dwmmc0/by-name/VENDOR    /vendor   ext4  ro,errors=panic                                      wait
 /dev/block/platform/13500000.dwmmc0/by-name/ODM       /odm      ext4  ro,errors=panic                                      wait
 /dev/block/platform/13500000.dwmmc0/by-name/CACHE     /cache    ext4  nosuid,nodev,noatime,noauto_da_alloc,discard          wait,check
-/dev/block/platform/13500000.dwmmc0/by-name/USERDATA  /data     ext4  nosuid,nodev,noatime,noauto_da_alloc,discard          wait,check,encryptable=footer,quota
-/dev/block/platform/13500000.dwmmc0/by-name/EFS       /efs      ext4  nosuid,nodev,noatime,noauto_da_alloc                  wait,check
-/dev/block/platform/13500000.dwmmc0/by-name/CPEFS     /cpefs    ext4  nosuid,nodev,noatime,noauto_da_alloc                  wait,check,nofail
+/dev/block/platform/13500000.dwmmc0/by-name/USERDATA  /data     ext4  nosuid,nodev,noatime,noauto_da_alloc,discard          wait,check,quota
 /dev/block/platform/13500000.dwmmc0/by-name/HIDDEN    /preload  ext4  defaults                                              wait
 /dev/block/platform/13500000.dwmmc0/by-name/OMR       /omr      ext4  defaults                                              wait
