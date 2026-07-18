@@ -8,9 +8,8 @@ permissive recovery;
 allow recovery vfat:dir create_dir_perms;
 allow recovery vfat:file create_file_perms;
 
-# TWRP creates /etc/fstab at runtime. /etc is part of the recovery rootfs.
-allow recovery rootfs:dir { add_name search write };
-allow recovery rootfs:file create_file_perms;
+# Android 7.1 policy has an unconditional neverallow against writing rootfs
+# files. Do not attempt to solve TWRP's generated /etc/fstab warning here.
 
 # TWRP 3.3's setup_uevent() logs "uevent not root" when socket() is denied.
 allow recovery self:netlink_kobject_uevent_socket create_socket_perms;
