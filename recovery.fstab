@@ -3,7 +3,7 @@
 /system     ext4  /dev/block/platform/13500000.dwmmc0/by-name/SYSTEM     flags=display=System;backup=1;wipeingui;flashimg=1
 /vendor     ext4  /dev/block/platform/13500000.dwmmc0/by-name/VENDOR     flags=display=Vendor;backup=1;wipeingui
 /odm        ext4  /dev/block/platform/13500000.dwmmc0/by-name/ODM        flags=display=ODM;backup=1;wipeingui
-/data       ext4  /dev/block/platform/13500000.dwmmc0/by-name/USERDATA   flags=display=Data;storage;backup=1;wipeingui;encryptable=footer;length=-20480
+/data       ext4  /dev/block/platform/13500000.dwmmc0/by-name/USERDATA   flags=display=Data;storage;backup=1;wipeingui;length=-20480
 /cache      ext4  /dev/block/platform/13500000.dwmmc0/by-name/CACHE      flags=display=Cache;backup=1;wipeingui
 
 # External microSD. Hot insertion is exposed as mmcblk1/mmcblk1p1 on J720F.

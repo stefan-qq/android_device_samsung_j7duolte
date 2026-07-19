@@ -3,21 +3,32 @@
 PATH=/sbin:/system/bin
 export PATH
 
-REPORT=/tmp/J720F_RC231_RUNTIME.txt
-SD_REPORT=/external_sd/J720F_RC231_RUNTIME.txt
+REPORT=/tmp/J720F_RUNTIME_DIAGNOSTICS.txt
+SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
 
-# Write a marker immediately so a partial report still proves that init started us.
+# Write immediately so even a partial file proves that init launched the service.
 {
-    echo '=== J720F RC2.3.1 SAFE RUNTIME DIAGNOSTICS ==='
+    echo '=== J720F TWRP RUNTIME DIAGNOSTICS ==='
     echo 'service_started=1'
     echo "date=$(/sbin/date 2>&1)"
     echo "pid=$$"
 } > "$REPORT" 2>&1
 
-# This service is asynchronous. Give the recovery UI time to finish startup.
+# Run independently after the UI has had time to finish startup.
 /sbin/sleep 20
 
 {
+    echo
+    echo '=== SELINUX ==='
+    echo -n 'enforce='
+    /sbin/cat /sys/fs/selinux/enforce 2>&1
+    echo -n 'init_context='
+    /sbin/cat /proc/1/attr/current 2>&1
+    echo -n 'service_context='
+    /sbin/cat /proc/self/attr/current 2>&1
+    echo -n 'cmdline='
+    /sbin/cat /proc/cmdline 2>&1
+
     echo
     echo '=== PROPERTIES ==='
     /sbin/getprop 2>&1
@@ -27,10 +38,6 @@ SD_REPORT=/external_sd/J720F_RC231_RUNTIME.txt
     /sbin/cat /proc/mounts 2>&1
 
     echo
-    echo '=== FILESYSTEMS ==='
-    /sbin/cat /proc/filesystems 2>&1
-
-    echo
     echo '=== FUNCTIONFS ==='
     /sbin/ls -ld /dev/usb-ffs /dev/usb-ffs/adb 2>&1
     /sbin/ls -la /dev/usb-ffs/adb 2>&1
@@ -38,8 +45,6 @@ SD_REPORT=/external_sd/J720F_RC231_RUNTIME.txt
     echo
     echo '=== CONFIGFS ==='
     /sbin/ls -ld /sys/kernel/config 2>&1
-    /sbin/ls -la /sys/kernel/config 2>&1
-    /sbin/ls -la /sys/kernel/config/usb_gadget 2>&1
     /sbin/ls -la /sys/kernel/config/usb_gadget/g1 2>&1
     for F in \
         /sys/kernel/config/usb_gadget/g1/UDC \
@@ -71,6 +76,11 @@ SD_REPORT=/external_sd/J720F_RC231_RUNTIME.txt
     done
 
     echo
+    echo '=== DATA HEADER (READ ONLY) ==='
+    /sbin/blkid /dev/block/mmcblk0p28 2>&1
+    /sbin/hexdump -C -n 4096 /dev/block/mmcblk0p28 2>&1 | /sbin/head -n 16
+
+    echo
     echo '=== PROCESSES ==='
     /sbin/ps 2>&1
 
@@ -83,7 +93,7 @@ SD_REPORT=/external_sd/J720F_RC231_RUNTIME.txt
     echo '=== END ==='
 } >> "$REPORT" 2>&1
 
-# Never mount or invoke TWRP here. Copy only when TWRP already mounted the card.
+# Never mount or invoke TWRP here. Copy only if TWRP already mounted the card.
 if /sbin/grep -q ' /external_sd ' /proc/mounts 2>/dev/null; then
     /sbin/cp "$REPORT" "$SD_REPORT" 2>/dev/null
     /sbin/sync

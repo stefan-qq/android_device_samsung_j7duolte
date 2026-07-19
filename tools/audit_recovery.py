@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the RC2.3.1 safe-diagnostic TWRP 3.3 image for SM-J720F."""
+"""Audit the USB/policy-fix TWRP 3.3 image for SM-J720F."""
 
 from __future__ import annotations
 
@@ -173,7 +173,10 @@ def main() -> int:
             "sbin/recovery",
             "sbin/adbd",
             "sbin/libminuitwrp.so",
-            "sbin/j720f_rc231_diag.sh",
+            "sbin/j720f_runtime_diag.sh",
+            "sbin/blkid",
+            "sbin/hexdump",
+            "sbin/head",
         }
         for relative in sorted(required_files):
             if relative not in normalized and not (root / relative).is_file():
@@ -188,6 +191,8 @@ def main() -> int:
             errors.append("/init unexpectedly points to stock Android init")
         elif not init_path.is_file() or not init_path.read_bytes().startswith(b"\x7fELF"):
             errors.append("/init is not the donor-era ELF init binary")
+        elif b"J720F recovery: forcing SELinux permissive" not in init_path.read_bytes():
+            errors.append("/init is missing the recovery-only forced-permissive marker")
 
         recovery = (root / "sbin/recovery").read_bytes() if (root / "sbin/recovery").is_file() else b""
         if b"3.3.0-0" not in recovery:
@@ -230,7 +235,9 @@ def main() -> int:
         require_contains(errors, fstab, "/cpefs      emmc", "TWRP fstab")
         require_contains(errors, fstab, "/misc       emmc", "TWRP fstab")
         require_contains(errors, fstab, "flags=display=Misc;backup=1", "TWRP fstab")
-        require_contains(errors, fstab, "encryptable=footer", "TWRP fstab")
+        if "encryptable=footer" in fstab:
+            errors.append("TWRP fstab still advertises the rejected legacy crypto footer")
+        require_contains(errors, fstab, "length=-20480", "TWRP fstab")
         if "/efs        ext4" in fstab or "/cpefs      ext4" in fstab:
             errors.append("EFS/CPEFS are still configured as mountable ext4 filesystems")
 
@@ -261,6 +268,8 @@ def main() -> int:
             require_contains(errors, usb, line, "stock-kernel hybrid USB rc")
         if "mount configfs none /config" in usb:
             errors.append("USB rc still uses the rejected /config mountpoint")
+        if "/sys/fs/selinux/enforce" in usb or "/sbin/permissive.sh" in usb:
+            errors.append("USB rc still contains the failed late-permissive workaround")
         if "mtp" in usb.lower():
             errors.append("USB rc still contains an MTP path")
         if "j720f_usb_report" in usb:
@@ -269,9 +278,9 @@ def main() -> int:
         if (root / "sbin/postrecoveryboot.sh").exists():
             errors.append("blocking /sbin/postrecoveryboot.sh must not be packaged")
 
-        diag = read_text(root, "sbin/j720f_rc231_diag.sh")
+        diag = read_text(root, "sbin/j720f_runtime_diag.sh")
         for line in (
-            "J720F_RC231_RUNTIME.txt",
+            "J720F_RUNTIME_DIAGNOSTICS.txt",
             "service_started=1",
             "DMESG USB/SELINUX",
             "/sys/kernel/config/usb_gadget/g1",
@@ -289,11 +298,11 @@ def main() -> int:
                 errors.append(f"safe diagnostic script contains forbidden operation: {forbidden}")
 
         for line in (
-            "service j720f_rc231_diag /sbin/sh /sbin/j720f_rc231_diag.sh",
+            "service j720f_runtime_diag /sbin/sh /sbin/j720f_runtime_diag.sh",
             "seclabel u:r:recovery:s0",
             "on property:init.svc.recovery=running",
             "setprop j720f.diag.triggered 1",
-            "start j720f_rc231_diag",
+            "start j720f_runtime_diag",
         ):
             require_contains(errors, usb, line, "safe init diagnostic service rc")
 
@@ -301,6 +310,7 @@ def main() -> int:
             "init.recovery.vold_decrypt.rc",
             "sbin/libtwrpmtp-legacy.so",
             "system/bin/init",
+            "sbin/permissive.sh",
         }
         for relative in sorted(forbidden_ramdisk):
             if relative in normalized or (root / relative).exists():
@@ -322,8 +332,21 @@ def main() -> int:
     for forbidden_setting in ("TW_INCLUDE_FBE", "TW_CRYPTO_USE_SYSTEM_VOLD"):
         if forbidden_setting in board:
             errors.append(f"BoardConfig.mk still contains {forbidden_setting}")
+    require_contains(
+        errors,
+        board,
+        "BOARD_SEPOLICY_DIRS += device/samsung/j7duolte/sepolicy",
+        "BoardConfig.mk",
+    )
 
-    policy = (args.tree / "sepolicy/recovery.te").read_text(errors="ignore")
+    init_policy = (args.tree / "sepolicy/init.te").read_text(errors="ignore")
+    recovery_policy = (args.tree / "sepolicy/recovery.te").read_text(errors="ignore")
+    adbd_policy = (args.tree / "sepolicy/adbd.te").read_text(errors="ignore")
+    require_contains(errors, init_policy, "permissive init;", "device init policy")
+    require_contains(errors, recovery_policy, "permissive recovery;", "device recovery policy")
+    require_contains(errors, adbd_policy, "permissive adbd;", "device adbd policy")
+
+    policy = recovery_policy
     for rule in (
         "allow recovery vfat:dir create_dir_perms;",
         "allow recovery vfat:file create_file_perms;",

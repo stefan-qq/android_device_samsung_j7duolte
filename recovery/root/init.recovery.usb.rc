@@ -3,22 +3,10 @@
 # and requires both the ConfigFS UDC bind and the legacy android_usb handoff.
 
 on early-init
-    write /sys/fs/selinux/enforce 0
     setprop sys.usb.configfs 1
     setprop sys.usb.controller 13600000.dwc3
     setprop sys.usb.ffs.ready 0
     setprop j720f.usb.early_init_action 1
-
-service j720f_permissive /sbin/permissive.sh
-    class core
-    user root
-    group root
-    disabled
-    oneshot
-    seclabel u:r:init:s0
-
-on init
-    start j720f_permissive
 
 on fs
     # Start from a disconnected legacy gadget.
@@ -84,7 +72,7 @@ on property:init.svc.adbd=stopped
 # RC2.3.1 diagnostics run independently of the TWRP startup path. This service
 # is read-only: it does not call twrp, mount filesystems, restart adbd or write
 # USB sysfs nodes.
-service j720f_rc231_diag /sbin/sh /sbin/j720f_rc231_diag.sh
+service j720f_runtime_diag /sbin/sh /sbin/j720f_runtime_diag.sh
     class default
     user root
     group root shell
@@ -94,4 +82,4 @@ service j720f_rc231_diag /sbin/sh /sbin/j720f_rc231_diag.sh
 
 on property:init.svc.recovery=running
     setprop j720f.diag.triggered 1
-    start j720f_rc231_diag
+    start j720f_runtime_diag

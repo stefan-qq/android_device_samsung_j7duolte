@@ -1,0 +1,3 @@
+# Recovery-only engineering policy. The bootloader exposes enforcing through
+# the runtime firmware/android DT property, so keep adbd permissive for bring-up.
+permissive adbd;

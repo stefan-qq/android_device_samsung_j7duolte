@@ -52,7 +52,7 @@ TARGET_USERIMAGES_USE_F2FS := false
 TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery.fstab
 
 # Device-specific recovery SELinux policy
-BOARD_SEPOLICY_DIRS += $(DEVICE_PATH)/sepolicy
+BOARD_SEPOLICY_DIRS += device/samsung/j7duolte/sepolicy
 
 # TWRP 3.3 configuration from the exact UI-working v11 generation
 RECOVERY_VARIANT := twrp
@@ -68,8 +68,9 @@ TW_HAS_DOWNLOAD_MODE := true
 TW_USE_NEW_MINADBD := true
 TW_EXTRA_LANGUAGES := true
 
-# Keep legacy footer-based FDE support. Do not mix Android 7.1 recovery with
-# Android 10 FBE or system-vold integration; those paths were not functional.
+# Keep the legacy crypto library available for TWRP backup compatibility, but
+# do not advertise a nonexistent footer in recovery.fstab. Stock CUL1 recovery
+# also describes USERDATA as plain ext4 with only length=-20480.
 TW_INCLUDE_CRYPTO := true
 
 # /data/media remains the internal-storage model; the device also has a real

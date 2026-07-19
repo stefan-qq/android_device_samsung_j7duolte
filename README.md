@@ -1,28 +1,26 @@
 # Samsung Galaxy J7 Duo (SM-J720F) — TWRP 3.3 bring-up
 
-This device tree preserves the only proven UI/touch architecture: the Android
-7.1 donor-era TWRP 3.3 userspace with the exact J720F Android 10 stock kernel
-and DT.
+This tree keeps the proven Android 7.1 TWRP 3.3 UI/touch userspace together
+with the exact Android 10 CUL1 kernel and DT.
 
-## RC1 verified on hardware
+## Verified on hardware
 
-- UI, brightness and touch work.
-- FAT32 microSD is detected, mounted and writable.
-- EFS and CPEFS are exposed as raw `dd` backups.
-- MTP noise and the `uevent not root` error are gone.
-- Existing stock-encrypted `/data` is not decryptable.
+- UI, framebuffer, brightness and touch work.
+- FAT32 microSD mounts read-write and can carry runtime logs.
+- EFS and CPEFS are exposed only as raw backups.
+- The old generated-fstab and uevent errors are gone.
 
-## RC2 scope
+## Current USB/policy fix
 
-RC2 keeps every verified RC1 component and changes only:
+The boot-supplied runtime DT property overrides the recovery image command
+line and reports `androidboot.selinux=enforcing`. The builder therefore patches the recovery-only
+Android 7.1 init binary to start SELinux non-enforcing before any init actions.
+This allows the stock CUL1 ConfigFS/FunctionFS USB sequence to run. The build
+also verifies that the device policy is included in `sepolicy.recovery`.
 
-- ConfigFS mount path from `/sys/kernel/config` to Android 7.1's `/config`;
-- ADB FunctionFS bind ordering to wait for `sys.usb.ffs.ready=1`;
-- removal of the legacy `android_usb` enable/restart trigger;
-- `/etc/fstab` as a symlink to writable `/tmp/fstab`;
-- one offline `J720F_RC2_USB_REPORT.txt` written to a mounted microSD;
-- read-only backup visibility for the 1 MB `misc` partition, so the persistent
-  recovery-boot command can be inspected without clearing it blindly.
+The TWRP fstab no longer advertises the incorrect legacy
+`encryptable=footer` flag. Existing stock Android 10 userdata may still require
+a format before it can be mounted by this old recovery userspace.
 
-Do not claim Android 10 userdata decryption. Do not wipe or restore EFS/CPEFS
-while validating recovery bring-up.
+MTP remains disabled until ADB is proven stable. Do not wipe or restore EFS or
+CPEFS while validating recovery bring-up.
