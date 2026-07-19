@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the source-built donor-era TWRP 3.3 image for SM-J720F."""
+"""Audit the RC2.3 diagnostic TWRP 3.3 image for SM-J720F."""
 
 from __future__ import annotations
 
@@ -173,7 +173,7 @@ def main() -> int:
             "sbin/recovery",
             "sbin/adbd",
             "sbin/libminuitwrp.so",
-            "sbin/j720f_usb_report.sh",
+            "sbin/postrecoveryboot.sh",
         }
         for relative in sorted(required_files):
             if relative not in normalized and not (root / relative).is_file():
@@ -192,6 +192,10 @@ def main() -> int:
         recovery = (root / "sbin/recovery").read_bytes() if (root / "sbin/recovery").is_file() else b""
         if b"3.3.0-0" not in recovery:
             errors.append("/sbin/recovery is not TWRP 3.3.0-0")
+        if b"/tmp/orsin" not in recovery or b"/tmp/orsout" not in recovery:
+            errors.append("/sbin/recovery is missing the tmpfs ORS FIFO paths")
+        if b"/sbin/orsin" in recovery or b"/sbin/orsout" in recovery:
+            errors.append("/sbin/recovery still embeds forbidden rootfs ORS FIFO paths")
 
         service_rc = read_text(root, "init.recovery.service.rc")
         require_contains(errors, service_rc, "service recovery /sbin/recovery", "recovery service rc")
@@ -245,36 +249,40 @@ def main() -> int:
             "setprop sys.usb.configfs 1",
             "setprop sys.usb.controller 13600000.dwc3",
             "setprop sys.usb.ffs.ready 0",
-            "mount configfs none /config",
-            "/config/usb_gadget/g1/functions/ffs.adb",
+            "mount configfs none /sys/kernel/config",
+            "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
+            "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
             "on property:sys.usb.ffs.ready=1",
-            "write /config/usb_gadget/g1/UDC ${sys.usb.controller}",
+            "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}",
+            "write /sys/class/android_usb/android0/f_ffs/aliases adb",
+            "write /sys/class/android_usb/android0/functions adb",
+            "write /sys/class/android_usb/android0/enable 1",
             "setprop sys.usb.config adb",
             "start adbd",
+            "setprop j720f.usb.configfs_action 1",
+            "setprop j720f.usb.ffs_ready_action 1",
         ):
-            require_contains(errors, usb, line, "ADB-only ConfigFS rc")
-        if "mount configfs none /sys/kernel/config" in usb:
-            errors.append("USB rc still uses the rejected sysfs ConfigFS mount path")
-        if "write /sys/class/android_usb/android0/enable 1" in usb:
-            errors.append("USB rc can still enable the legacy android_usb gadget")
+            require_contains(errors, usb, line, "stock-kernel hybrid USB rc")
+        if "mount configfs none /config" in usb:
+            errors.append("USB rc still uses the rejected /config mountpoint")
         if "mtp" in usb.lower():
             errors.append("USB rc still contains an MTP path")
+        if "j720f_usb_report" in usb:
+            errors.append("USB rc still relies on the failed init-domain report service")
 
+        post_boot = read_text(root, "sbin/postrecoveryboot.sh")
         for line in (
-            "service j720f_usb_report /sbin/sh /sbin/j720f_usb_report.sh",
-            "on property:init.svc.recovery=running",
-            "start j720f_usb_report",
+            "J720F_RC23_RUNTIME.txt",
+            "PRE_RETRY",
+            "POST_RETRY",
+            "FUNCTIONFS MOUNT RETRY",
+            "CONFIGFS MOUNT RETRY",
+            "FIFO CREATE TEST",
+            "DMESG USB/SELINUX",
+            "/sys/kernel/config/usb_gadget/g1",
+            "/sys/class/android_usb/android0",
         ):
-            require_contains(errors, usb, line, "directly imported USB report service")
-
-        usb_report = read_text(root, "sbin/j720f_usb_report.sh")
-        for line in (
-            "J720F_RC2_USB_REPORT.txt",
-            "/config/usb_gadget/g1",
-            "/sys/class/udc",
-            "DMESG FILTERED",
-        ):
-            require_contains(errors, usb_report, line, "offline USB report script")
+            require_contains(errors, post_boot, line, "post-recovery diagnostic hook")
 
         forbidden_ramdisk = {
             "init.recovery.vold_decrypt.rc",
@@ -307,6 +315,7 @@ def main() -> int:
         "allow recovery vfat:dir create_dir_perms;",
         "allow recovery vfat:file create_file_perms;",
         "allow recovery self:netlink_kobject_uevent_socket create_socket_perms;",
+        "allow recovery tmpfs:fifo_file create_file_perms;",
     ):
         require_contains(errors, policy, rule, "device recovery policy")
 

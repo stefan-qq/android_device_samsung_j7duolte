@@ -48,6 +48,7 @@ on fs
     mkdir /dev/usb-ffs 0770 shell shell
     mkdir /dev/usb-ffs/adb 0770 shell shell
     mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000
+    setprop j720f.usb.ffs_mount_action 1
 
 on boot
     ifup lo
@@ -105,6 +106,6 @@ service adbd /sbin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery
     socket adbd stream 660 system system
     seclabel u:r:adbd:s0
 
-# The device USB rc owns the complete ADB gadget lifecycle. There is no generic
-# ro.debuggable or service.adb.root trigger here: both can start adbd before
-# FunctionFS is mounted or re-enable Samsung's legacy android_usb gadget.
+# The device USB rc owns the complete stock-kernel hybrid ADB lifecycle. There
+# is no generic ro.debuggable or service.adb.root trigger here; the Samsung
+# android_usb handoff occurs only after FunctionFS reports ready.

@@ -13,3 +13,7 @@ allow recovery vfat:file create_file_perms;
 
 # TWRP 3.3's setup_uevent() logs "uevent not root" when socket() is denied.
 allow recovery self:netlink_kobject_uevent_socket create_socket_perms;
+
+# TWRP creates ADB-backup and command FIFOs on recovery tmpfs. RC2.2 logged
+# failures for /tmp/twadbfifo; allow only FIFO objects on tmpfs.
+allow recovery tmpfs:fifo_file create_file_perms;
