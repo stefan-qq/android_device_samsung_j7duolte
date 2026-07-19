@@ -64,3 +64,16 @@ on property:sys.usb.ffs.ready=1 && property:sys.usb.config=adb && property:sys.u
 
 on property:init.svc.adbd=stopped
     setprop sys.usb.ffs.ready 0
+# Offline USB report. Keep this service in the directly imported USB rc; the
+# legacy hardware-named recovery rc does not match ro.hardware=exynos7884.
+service j720f_usb_report /sbin/sh /sbin/j720f_usb_report.sh
+    class default
+    user root
+    group root shell
+    disabled
+    oneshot
+    seclabel u:r:init:s0
+
+# Generate one report after TWRP starts and copy it to the working microSD.
+on property:init.svc.recovery=running
+    start j720f_usb_report

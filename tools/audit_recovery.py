@@ -260,6 +260,13 @@ def main() -> int:
         if "mtp" in usb.lower():
             errors.append("USB rc still contains an MTP path")
 
+        for line in (
+            "service j720f_usb_report /sbin/sh /sbin/j720f_usb_report.sh",
+            "on property:init.svc.recovery=running",
+            "start j720f_usb_report",
+        ):
+            require_contains(errors, usb, line, "directly imported USB report service")
+
         usb_report = read_text(root, "sbin/j720f_usb_report.sh")
         for line in (
             "J720F_RC2_USB_REPORT.txt",
