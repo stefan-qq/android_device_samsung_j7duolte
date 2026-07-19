@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the RC2.3 diagnostic TWRP 3.3 image for SM-J720F."""
+"""Audit the RC2.3.1 safe-diagnostic TWRP 3.3 image for SM-J720F."""
 
 from __future__ import annotations
 
@@ -173,7 +173,7 @@ def main() -> int:
             "sbin/recovery",
             "sbin/adbd",
             "sbin/libminuitwrp.so",
-            "sbin/postrecoveryboot.sh",
+            "sbin/j720f_rc231_diag.sh",
         }
         for relative in sorted(required_files):
             if relative not in normalized and not (root / relative).is_file():
@@ -192,10 +192,6 @@ def main() -> int:
         recovery = (root / "sbin/recovery").read_bytes() if (root / "sbin/recovery").is_file() else b""
         if b"3.3.0-0" not in recovery:
             errors.append("/sbin/recovery is not TWRP 3.3.0-0")
-        if b"/tmp/orsin" not in recovery or b"/tmp/orsout" not in recovery:
-            errors.append("/sbin/recovery is missing the tmpfs ORS FIFO paths")
-        if b"/sbin/orsin" in recovery or b"/sbin/orsout" in recovery:
-            errors.append("/sbin/recovery still embeds forbidden rootfs ORS FIFO paths")
 
         service_rc = read_text(root, "init.recovery.service.rc")
         require_contains(errors, service_rc, "service recovery /sbin/recovery", "recovery service rc")
@@ -270,19 +266,36 @@ def main() -> int:
         if "j720f_usb_report" in usb:
             errors.append("USB rc still relies on the failed init-domain report service")
 
-        post_boot = read_text(root, "sbin/postrecoveryboot.sh")
+        if (root / "sbin/postrecoveryboot.sh").exists():
+            errors.append("blocking /sbin/postrecoveryboot.sh must not be packaged")
+
+        diag = read_text(root, "sbin/j720f_rc231_diag.sh")
         for line in (
-            "J720F_RC23_RUNTIME.txt",
-            "PRE_RETRY",
-            "POST_RETRY",
-            "FUNCTIONFS MOUNT RETRY",
-            "CONFIGFS MOUNT RETRY",
-            "FIFO CREATE TEST",
+            "J720F_RC231_RUNTIME.txt",
+            "service_started=1",
             "DMESG USB/SELINUX",
             "/sys/kernel/config/usb_gadget/g1",
             "/sys/class/android_usb/android0",
         ):
-            require_contains(errors, post_boot, line, "post-recovery diagnostic hook")
+            require_contains(errors, diag, line, "safe init diagnostic service")
+        for forbidden in (
+            "/sbin/twrp",
+            "ctl.stop",
+            "ctl.start",
+            "mount -t",
+            "tune2fs",
+        ):
+            if forbidden in diag:
+                errors.append(f"safe diagnostic script contains forbidden operation: {forbidden}")
+
+        for line in (
+            "service j720f_rc231_diag /sbin/sh /sbin/j720f_rc231_diag.sh",
+            "seclabel u:r:recovery:s0",
+            "on property:init.svc.recovery=running",
+            "setprop j720f.diag.triggered 1",
+            "start j720f_rc231_diag",
+        ):
+            require_contains(errors, usb, line, "safe init diagnostic service rc")
 
         forbidden_ramdisk = {
             "init.recovery.vold_decrypt.rc",
@@ -315,7 +328,6 @@ def main() -> int:
         "allow recovery vfat:dir create_dir_perms;",
         "allow recovery vfat:file create_file_perms;",
         "allow recovery self:netlink_kobject_uevent_socket create_socket_perms;",
-        "allow recovery tmpfs:fifo_file create_file_perms;",
     ):
         require_contains(errors, policy, rule, "device recovery policy")
 

@@ -80,3 +80,18 @@ on property:sys.usb.ffs.ready=1 && property:sys.usb.config=adb && property:sys.u
 
 on property:init.svc.adbd=stopped
     setprop sys.usb.ffs.ready 0
+
+# RC2.3.1 diagnostics run independently of the TWRP startup path. This service
+# is read-only: it does not call twrp, mount filesystems, restart adbd or write
+# USB sysfs nodes.
+service j720f_rc231_diag /sbin/sh /sbin/j720f_rc231_diag.sh
+    class default
+    user root
+    group root shell
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
+on property:init.svc.recovery=running
+    setprop j720f.diag.triggered 1
+    start j720f_rc231_diag
