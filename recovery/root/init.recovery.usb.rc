@@ -1,10 +1,11 @@
-# SM-J720F recovery USB: stock-kernel ConfigFS with one FunctionFS ADB function.
-# All ConfigFS setup is performed by init, not by a recovery-domain shell.
+# SM-J720F recovery USB: one ADB-only FunctionFS gadget on ConfigFS.
+# Android 7.1's canonical ConfigFS mountpoint is /config.
 
 on early-init
     write /sys/fs/selinux/enforce 0
     setprop sys.usb.configfs 1
     setprop sys.usb.controller 13600000.dwc3
+    setprop sys.usb.ffs.ready 0
 
 service j720f_permissive /sbin/permissive.sh
     class core
@@ -18,44 +19,48 @@ on init
     start j720f_permissive
 
 on fs
-    # The donor init has a legacy android_usb trigger. Disable that gadget
-    # before binding the same UDC through ConfigFS.
+    # Never let the legacy android_usb gadget own the controller.
     write /sys/class/android_usb/android0/enable 0
-    mount configfs none /sys/kernel/config
-    mkdir /sys/kernel/config/usb_gadget/g1 0770 root root
-    mkdir /sys/kernel/config/usb_gadget/g1/strings/0x409 0770 root root
-    mkdir /sys/kernel/config/usb_gadget/g1/configs/c.1 0770 root root
-    mkdir /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409 0770 root root
-    mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
 
-    write /sys/kernel/config/usb_gadget/g1/idVendor 0x04E8
-    write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
-    write /sys/kernel/config/usb_gadget/g1/bDeviceClass 0
-    write /sys/kernel/config/usb_gadget/g1/bDeviceSubClass 0
-    write /sys/kernel/config/usb_gadget/g1/bDeviceProtocol 0
-    write /sys/kernel/config/usb_gadget/g1/strings/0x409/serialnumber ${ro.serialno}
-    write /sys/kernel/config/usb_gadget/g1/strings/0x409/manufacturer SAMSUNG
-    write /sys/kernel/config/usb_gadget/g1/strings/0x409/product SM-J720F
-    write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration adb
-    write /sys/kernel/config/usb_gadget/g1/configs/c.1/MaxPower 0x3f
-    symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb
+    # The Android 7.1 init layout mounts ConfigFS at /config.
+    mount configfs none /config
+    mkdir /config/usb_gadget/g1 0770 root root
+    mkdir /config/usb_gadget/g1/strings/0x409 0770 root root
+    mkdir /config/usb_gadget/g1/configs/b.1 0770 root root
+    mkdir /config/usb_gadget/g1/configs/b.1/strings/0x409 0770 root root
+    mkdir /config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
 
-    mkdir /dev/usb-ffs 0775 shell shell
-    mkdir /dev/usb-ffs/adb 0770 shell shell
-    mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000
+    write /config/usb_gadget/g1/idVendor 0x04E8
+    write /config/usb_gadget/g1/idProduct 0x6860
+    write /config/usb_gadget/g1/bDeviceClass 0
+    write /config/usb_gadget/g1/bDeviceSubClass 0
+    write /config/usb_gadget/g1/bDeviceProtocol 0
+    write /config/usb_gadget/g1/strings/0x409/serialnumber ${ro.serialno}
+    write /config/usb_gadget/g1/strings/0x409/manufacturer SAMSUNG
+    write /config/usb_gadget/g1/strings/0x409/product SM-J720F
+    write /config/usb_gadget/g1/configs/b.1/strings/0x409/configuration adb
+    write /config/usb_gadget/g1/configs/b.1/MaxPower 0x3f
 
+# Force a property edge after the FunctionFS mount from the base init.rc has
+# completed. adbd writes its descriptors and sets sys.usb.ffs.ready=1.
+on boot
+    setprop sys.usb.config none
     setprop sys.usb.config adb
-    start adbd
 
-on property:sys.usb.config=adb
-    start adbd
-
-on property:sys.usb.ffs.ready=1
-    write /sys/class/android_usb/android0/enable 0
-    write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
-    setprop sys.usb.state adb
-
-on property:sys.usb.config=none
+on property:sys.usb.config=none && property:sys.usb.configfs=1
+    write /config/usb_gadget/g1/UDC none
     stop adbd
     setprop sys.usb.ffs.ready 0
     setprop sys.usb.state none
+
+on property:sys.usb.config=adb && property:sys.usb.configfs=1
+    start adbd
+
+on property:sys.usb.ffs.ready=1 && property:sys.usb.config=adb && property:sys.usb.configfs=1
+    rm /config/usb_gadget/g1/configs/b.1/f1
+    symlink /config/usb_gadget/g1/functions/ffs.adb /config/usb_gadget/g1/configs/b.1/f1
+    write /config/usb_gadget/g1/UDC ${sys.usb.controller}
+    setprop sys.usb.state adb
+
+on property:init.svc.adbd=stopped
+    setprop sys.usb.ffs.ready 0

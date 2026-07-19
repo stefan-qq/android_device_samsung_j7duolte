@@ -1,2 +1,15 @@
 # Keep the proven v11 init/userspace architecture. Device-specific USB setup is
 # imported separately from init.recovery.usb.rc.
+
+service j720f_usb_report /sbin/sh /sbin/j720f_usb_report.sh
+    class default
+    user root
+    group root shell
+    disabled
+    oneshot
+    seclabel u:r:init:s0
+
+# Generate one offline report after TWRP starts. It is copied to the working
+# external SD card when available, so a failed USB attempt still yields facts.
+on property:init.svc.recovery=running
+    start j720f_usb_report

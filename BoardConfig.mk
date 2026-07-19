@@ -72,10 +72,12 @@ TW_EXTRA_LANGUAGES := true
 # Android 10 FBE or system-vold integration; those paths were not functional.
 TW_INCLUDE_CRYPTO := true
 
-# Internal storage is /data/media. A removable microSD is also declared in the
-# TWRP fstab and is the settings storage while /data remains encrypted.
+# /data/media remains the internal-storage model; the device also has a real
+# removable microSD. Prefer that working card while stock-encrypted /data is
+# unavailable in the Android 7.1 recovery userspace.
 BOARD_HAS_NO_REAL_SDCARD := true
 RECOVERY_SDCARD_ON_DATA := true
+TW_DEFAULT_EXTERNAL_STORAGE := true
 
 # MTP is disabled until USB ADB is proven stable. This also removes the noisy
 # "Unknown MTP message type" path from partition updates.

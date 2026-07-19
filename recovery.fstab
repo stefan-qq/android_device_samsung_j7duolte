@@ -20,6 +20,6 @@
 /recovery   emmc  /dev/block/platform/13500000.dwmmc0/by-name/RECOVERY   flags=display=Recovery;backup=1;flashimg=1
 /dtbo       emmc  /dev/block/platform/13500000.dwmmc0/by-name/DTBO       flags=display=DTBO;backup=1;flashimg=1
 /modem      emmc  /dev/block/platform/13500000.dwmmc0/by-name/RADIO      flags=display=Modem;backup=1
-/misc       emmc  /dev/block/platform/13500000.dwmmc0/by-name/MISC       flags=display=Misc
+/misc       emmc  /dev/block/platform/13500000.dwmmc0/by-name/MISC       flags=display=Misc;backup=1
 /param      emmc  /dev/block/platform/13500000.dwmmc0/by-name/PARAM      flags=display=Param;backup=1
 /cp_debug   emmc  /dev/block/platform/13500000.dwmmc0/by-name/CP_DEBUG   flags=display=CP_Debug;backup=1

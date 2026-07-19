@@ -162,6 +162,7 @@ def main() -> int:
         normalized = {item.lstrip("./") for item in listing}
         required_files = {
             "init",
+            "init.rc",
             "default.prop",
             "etc/fstab",
             "etc/recovery.fstab",
@@ -172,6 +173,7 @@ def main() -> int:
             "sbin/recovery",
             "sbin/adbd",
             "sbin/libminuitwrp.so",
+            "sbin/j720f_usb_report.sh",
         }
         for relative in sorted(required_files):
             if relative not in normalized and not (root / relative).is_file():
@@ -194,6 +196,22 @@ def main() -> int:
         service_rc = read_text(root, "init.recovery.service.rc")
         require_contains(errors, service_rc, "service recovery /sbin/recovery", "recovery service rc")
 
+        generated_fstab = root / "etc/fstab"
+        if not generated_fstab.is_symlink():
+            errors.append("/etc/fstab is not a symlink into writable tmpfs")
+        elif os.readlink(generated_fstab) != "/tmp/fstab":
+            errors.append(f"/etc/fstab points to {os.readlink(generated_fstab)!r}; expected '/tmp/fstab'")
+
+        init_rc = read_text(root, "init.rc")
+        if "init.recovery.vold_decrypt.rc" in init_rc:
+            errors.append("init.rc still imports the absent vold decrypt rc")
+        if "on property:service.adb.root=1" in init_rc:
+            errors.append("init.rc still contains the legacy android_usb restart trigger")
+        if "on property:ro.debuggable=1" in init_rc:
+            errors.append("init.rc can still start adbd before the device USB action")
+        if "write /sys/class/android_usb/android0/enable 1" in init_rc:
+            errors.append("init.rc can still enable the legacy android_usb gadget")
+
         properties = read_text(root, "default.prop")
         for line in (
             "ro.secure=0",
@@ -210,6 +228,8 @@ def main() -> int:
         require_contains(errors, fstab, "/external_sd vfat /dev/block/mmcblk1p1 /dev/block/mmcblk1", "TWRP fstab")
         require_contains(errors, fstab, "/efs        emmc", "TWRP fstab")
         require_contains(errors, fstab, "/cpefs      emmc", "TWRP fstab")
+        require_contains(errors, fstab, "/misc       emmc", "TWRP fstab")
+        require_contains(errors, fstab, "flags=display=Misc;backup=1", "TWRP fstab")
         require_contains(errors, fstab, "encryptable=footer", "TWRP fstab")
         if "/efs        ext4" in fstab or "/cpefs      ext4" in fstab:
             errors.append("EFS/CPEFS are still configured as mountable ext4 filesystems")
@@ -224,16 +244,30 @@ def main() -> int:
         for line in (
             "setprop sys.usb.configfs 1",
             "setprop sys.usb.controller 13600000.dwc3",
-            "mount configfs none /sys/kernel/config",
-            "functions/ffs.adb",
-            "mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000",
-            "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}",
+            "setprop sys.usb.ffs.ready 0",
+            "mount configfs none /config",
+            "/config/usb_gadget/g1/functions/ffs.adb",
+            "on property:sys.usb.ffs.ready=1",
+            "write /config/usb_gadget/g1/UDC ${sys.usb.controller}",
             "setprop sys.usb.config adb",
             "start adbd",
         ):
             require_contains(errors, usb, line, "ADB-only ConfigFS rc")
+        if "mount configfs none /sys/kernel/config" in usb:
+            errors.append("USB rc still uses the rejected sysfs ConfigFS mount path")
+        if "write /sys/class/android_usb/android0/enable 1" in usb:
+            errors.append("USB rc can still enable the legacy android_usb gadget")
         if "mtp" in usb.lower():
             errors.append("USB rc still contains an MTP path")
+
+        usb_report = read_text(root, "sbin/j720f_usb_report.sh")
+        for line in (
+            "J720F_RC2_USB_REPORT.txt",
+            "/config/usb_gadget/g1",
+            "/sys/class/udc",
+            "DMESG FILTERED",
+        ):
+            require_contains(errors, usb_report, line, "offline USB report script")
 
         forbidden_ramdisk = {
             "init.recovery.vold_decrypt.rc",
@@ -254,6 +288,7 @@ def main() -> int:
         "TW_USE_NEW_MINADBD := true",
         "TW_INCLUDE_CRYPTO := true",
         "TW_EXCLUDE_MTP := true",
+        "TW_DEFAULT_EXTERNAL_STORAGE := true",
     ):
         require_contains(errors, board, required_setting, "BoardConfig.mk")
     for forbidden_setting in ("TW_INCLUDE_FBE", "TW_CRYPTO_USE_SYSTEM_VOLD"):
