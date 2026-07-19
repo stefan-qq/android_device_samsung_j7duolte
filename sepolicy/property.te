@@ -1,0 +1,2 @@
+# Recovery-local property namespace used by TWRP and J720F diagnostics.
+type twrp_prop, property_type;

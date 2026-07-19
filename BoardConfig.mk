@@ -80,8 +80,9 @@ BOARD_HAS_NO_REAL_SDCARD := true
 RECOVERY_SDCARD_ON_DATA := true
 TW_DEFAULT_EXTERNAL_STORAGE := true
 
-# MTP is disabled until USB ADB is proven stable. This also removes the noisy
-# "Unknown MTP message type" path from partition updates.
+# Keep MTP out of this one root-cause build. ADB and MTP share the same USB
+# gadget/UDC path; first prove the enforcing SELinux rules, then enable MTP in
+# a small follow-up without mixing another daemon and gadget function here.
 TW_EXCLUDE_MTP := true
 TW_EXCLUDE_TWRPAPP := true
 TW_EXCLUDE_SUPERSU := true

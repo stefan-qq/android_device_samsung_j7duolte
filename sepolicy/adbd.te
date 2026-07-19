@@ -1,3 +1,6 @@
-# Recovery-only engineering policy. The bootloader exposes enforcing through
-# the runtime firmware/android DT property, so keep adbd permissive for bring-up.
-permissive adbd;
+# adbd publishes its FunctionFS descriptors and readiness property while the
+# Samsung kernel remains enforcing.
+allow adbd functionfs:filesystem getattr;
+allow adbd functionfs:dir r_dir_perms;
+allow adbd functionfs:file rw_file_perms;
+set_prop(adbd, ffs_prop)

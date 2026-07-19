@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the USB/policy-fix TWRP 3.3 image for SM-J720F."""
+"""Audit the enforcing-policy TWRP 3.3 image for SM-J720F."""
 
 from __future__ import annotations
 
@@ -137,10 +137,6 @@ def main() -> int:
         if header[key] != expected:
             errors.append(f"header {key}={header[key]!r}; expected {expected!r}")
 
-    for token in ("androidboot.selinux=permissive", "enforcing=0"):
-        if token not in str(header["cmdline"]).split():
-            errors.append(f"kernel command line is missing {token}")
-
     if digest(kernel) != EXPECTED_KERNEL_SHA256:
         errors.append("kernel differs from the exact J720F Android 10 stock kernel")
     if digest(dt) != EXPECTED_DT_SHA256:
@@ -191,12 +187,16 @@ def main() -> int:
             errors.append("/init unexpectedly points to stock Android init")
         elif not init_path.is_file() or not init_path.read_bytes().startswith(b"\x7fELF"):
             errors.append("/init is not the donor-era ELF init binary")
-        elif b"J720F recovery: forcing SELinux permissive" not in init_path.read_bytes():
-            errors.append("/init is missing the recovery-only forced-permissive marker")
+        elif b"J720F recovery: forcing SELinux permissive" in init_path.read_bytes():
+            errors.append("/init still contains the disproven forced-permissive patch")
 
         recovery = (root / "sbin/recovery").read_bytes() if (root / "sbin/recovery").is_file() else b""
         if b"3.3.0-0" not in recovery:
             errors.append("/sbin/recovery is not TWRP 3.3.0-0")
+        if b"/tmp/orsin" not in recovery or b"/tmp/orsout" not in recovery:
+            errors.append("/sbin/recovery is missing the writable /tmp ORS FIFO paths")
+        if b"/sbin/orsin" in recovery or b"/sbin/orsout" in recovery:
+            errors.append("/sbin/recovery still embeds read-only /sbin ORS FIFO paths")
 
         service_rc = read_text(root, "init.recovery.service.rc")
         require_contains(errors, service_rc, "service recovery /sbin/recovery", "recovery service rc")
@@ -300,11 +300,11 @@ def main() -> int:
                 errors.append(f"safe diagnostic script contains forbidden operation: {forbidden}")
 
         for line in (
-            "service j720f_runtime_diag /sbin/sh /sbin/j720f_runtime_diag.sh",
+            "service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh",
             "seclabel u:r:recovery:s0",
             "on property:init.svc.recovery=running",
             "setprop j720f.diag.triggered 1",
-            "start j720f_runtime_diag",
+            "start j7diag",
         ):
             require_contains(errors, usb, line, "safe init diagnostic service rc")
 
@@ -343,17 +343,42 @@ def main() -> int:
     init_policy = (args.tree / "sepolicy/init.te").read_text(errors="ignore")
     recovery_policy = (args.tree / "sepolicy/recovery.te").read_text(errors="ignore")
     adbd_policy = (args.tree / "sepolicy/adbd.te").read_text(errors="ignore")
-    require_contains(errors, init_policy, "permissive init;", "device init policy")
-    require_contains(errors, recovery_policy, "permissive recovery;", "device recovery policy")
-    require_contains(errors, adbd_policy, "permissive adbd;", "device adbd policy")
+    all_device_policy = "\n".join((init_policy, recovery_policy, adbd_policy))
+    for domain in ("init", "recovery", "adbd"):
+        if f"permissive {domain};" in all_device_policy:
+            errors.append(f"device policy still declares {domain} permissive")
+
+    for rule in (
+        "allow init configfs:file create_file_perms;",
+        "allow init configfs:lnk_file create_file_perms;",
+        "allow init functionfs:filesystem { getattr mount remount unmount };",
+        "allow init sysfs_usb:file rw_file_perms;",
+    ):
+        require_contains(errors, init_policy, rule, "device init policy")
+
+    for rule in (
+        "allow adbd functionfs:file rw_file_perms;",
+        "set_prop(adbd, ffs_prop)",
+    ):
+        require_contains(errors, adbd_policy, rule, "device adbd policy")
 
     policy = recovery_policy
     for rule in (
         "allow recovery vfat:dir create_dir_perms;",
         "allow recovery vfat:file create_file_perms;",
         "allow recovery self:netlink_kobject_uevent_socket create_socket_perms;",
+        "allow recovery tmpfs:fifo_file create_file_perms;",
+        "create_pty(recovery)",
+        "set_prop(recovery, twrp_prop)",
+        "set_prop(recovery, system_radio_prop)",
     ):
         require_contains(errors, policy, rule, "device recovery policy")
+
+    property_policy = (args.tree / "sepolicy/property.te").read_text(errors="ignore")
+    property_contexts = (args.tree / "sepolicy/property_contexts").read_text(errors="ignore")
+    require_contains(errors, property_policy, "type twrp_prop, property_type;", "device property policy")
+    for prefix in ("ro.twrp.", "twrp.", "recovery.perf.", "j720f."):
+        require_contains(errors, property_contexts, prefix, "device property contexts")
 
     # Android 7.1 system/sepolicy/domain.te has an unconditional neverallow
     # that forbids domains from creating or writing rootfs-labelled files.

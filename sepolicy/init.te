@@ -1,4 +1,22 @@
-# The stock J720F kernel exposes the USB gadget through ConfigFS. Keep init
-# permissive in this recovery-only engineering build so its early ConfigFS and
-# FunctionFS setup is not blocked by the donor Android 7.1 policy generation.
-permissive init;
+# The Samsung stock kernel forces SELinux enforcing even when Android init asks
+# for non-enforcing mode. Grant the exact recovery-init operations needed to
+# build the ConfigFS gadget and mount FunctionFS instead of relying on
+# permissive domains.
+
+# ConfigFS gadget construction under /sys/kernel/config.
+allow init configfs:filesystem { getattr mount remount unmount };
+allow init configfs:dir create_dir_perms;
+allow init configfs:dir mounton;
+allow init configfs:file create_file_perms;
+allow init configfs:lnk_file create_file_perms;
+
+# FunctionFS mount at /dev/usb-ffs/adb.
+allow init functionfs:filesystem { getattr mount remount unmount };
+allow init device:dir mounton;
+
+# Samsung android_usb and DWC3 sysfs controls used by init rc.
+allow init sysfs:dir mounton;
+allow init sysfs:dir r_dir_perms;
+allow init sysfs:file rw_file_perms;
+allow init sysfs_usb:dir r_dir_perms;
+allow init sysfs_usb:file rw_file_perms;

@@ -1,15 +1,37 @@
-# Keep the legacy TWRP process permissive during bring-up, but also grant the
-# operations that were proven to fail at runtime so functionality does not
-# depend on permissive mode being applied successfully.
-permissive recovery;
+# The Samsung stock kernel forces SELinux enforcing. Keep recovery functional
+# with explicit policy rather than permissive-domain declarations.
 
-# v6 diagnostics proved that VFAT mounts read-write, while creating a file
-# returned EACCES even with uid=0,gid=0,fmask=0000,dmask=0000.
+# Proven working removable-storage path.
 allow recovery vfat:dir create_dir_perms;
 allow recovery vfat:file create_file_perms;
 
-# Android 7.1 policy has an unconditional neverallow against writing rootfs
-# files. Do not attempt to solve TWRP's generated /etc/fstab warning here.
-
-# TWRP 3.3's setup_uevent() logs "uevent not root" when socket() is denied.
+# TWRP partition hotplug/uevent handling.
 allow recovery self:netlink_kobject_uevent_socket create_socket_perms;
+
+# TWRP runtime FIFOs and its embedded terminal PTY.
+allow recovery tmpfs:fifo_file create_file_perms;
+create_pty(recovery)
+allow recovery devpts:dir r_dir_perms;
+allow recovery ptmx_device:chr_file rw_file_perms;
+
+# TWRP and diagnostics properties. sys.usb.config is system_radio_prop and
+# sys.usb.ffs.ready is ffs_prop in the Android 7.1 policy generation.
+set_prop(recovery, twrp_prop)
+set_prop(recovery, system_radio_prop)
+set_prop(recovery, ffs_prop)
+
+# Read-only runtime inspection of the USB state. Init owns gadget creation.
+allow recovery configfs:filesystem getattr;
+allow recovery configfs:dir r_dir_perms;
+allow recovery configfs:file r_file_perms;
+allow recovery configfs:lnk_file r_file_perms;
+allow recovery functionfs:filesystem getattr;
+allow recovery functionfs:dir r_dir_perms;
+allow recovery functionfs:file rw_file_perms;
+allow recovery sysfs:dir r_dir_perms;
+allow recovery sysfs:file r_file_perms;
+allow recovery sysfs_usb:dir r_dir_perms;
+allow recovery sysfs_usb:file r_file_perms;
+
+# Android 7.1 system/sepolicy/domain.te has an unconditional neverallow against
+# writing rootfs-labelled files, so no rootfs write workaround belongs here.

@@ -72,7 +72,7 @@ on property:init.svc.adbd=stopped
 # RC2.3.1 diagnostics run independently of the TWRP startup path. This service
 # is read-only: it does not call twrp, mount filesystems, restart adbd or write
 # USB sysfs nodes.
-service j720f_runtime_diag /sbin/sh /sbin/j720f_runtime_diag.sh
+service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh
     class default
     user root
     group root shell
@@ -82,4 +82,4 @@ service j720f_runtime_diag /sbin/sh /sbin/j720f_runtime_diag.sh
 
 on property:init.svc.recovery=running
     setprop j720f.diag.triggered 1
-    start j720f_runtime_diag
+    start j7diag

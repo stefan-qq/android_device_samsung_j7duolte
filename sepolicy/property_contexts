@@ -1,0 +1,4 @@
+ro.twrp.       u:object_r:twrp_prop:s0
+twrp.          u:object_r:twrp_prop:s0
+recovery.perf. u:object_r:twrp_prop:s0
+j720f.         u:object_r:twrp_prop:s0
