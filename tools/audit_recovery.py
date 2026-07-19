@@ -216,6 +216,8 @@ def main() -> int:
             errors.append("init.rc can still start adbd before the device USB action")
         if "write /sys/class/android_usb/android0/enable 1" in init_rc:
             errors.append("init.rc can still enable the legacy android_usb gadget")
+        if "/sbin/permissive.sh" in init_rc:
+            errors.append("init.rc still invokes the obsolete late-permissive helper")
 
         properties = read_text(root, "default.prop")
         for line in (
@@ -310,7 +312,6 @@ def main() -> int:
             "init.recovery.vold_decrypt.rc",
             "sbin/libtwrpmtp-legacy.so",
             "system/bin/init",
-            "sbin/permissive.sh",
         }
         for relative in sorted(forbidden_ramdisk):
             if relative in normalized or (root / relative).exists():
