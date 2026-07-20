@@ -1,4 +1,11 @@
-# Android 7.1 adbd uses the kernel legacy transport when FunctionFS ep0 is
-# absent at daemon startup. The base Nougat policy already carries this rule;
-# keep it explicit in the device policy because this recovery depends on it.
-allow adbd adb_device:chr_file rw_file_perms;
+# The pinned Android 10 stock-recovery adbd writes FunctionFS descriptors,
+# publishes sys.usb.ffs.ready, and then serves the recovery transport.
+allow adbd functionfs:filesystem getattr;
+allow adbd functionfs:dir r_dir_perms;
+allow adbd functionfs:file rw_file_perms;
+set_prop(adbd, ffs_prop)
+
+# Recovery-only bring-up: the Android 10 daemon comes from a newer policy
+# generation than this Android 7.1 TWRP base. Keep only adbd permissive for the
+# hardware test; init remains enforcing and owns all gadget construction.
+permissive adbd;

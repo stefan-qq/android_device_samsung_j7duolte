@@ -168,6 +168,11 @@ def main() -> int:
             "sepolicy",
             "sbin/recovery",
             "sbin/adbd",
+            "system/bin/adbd",
+            "system/bin/linker64",
+            "system/bin/sh",
+            "system/etc/ld.config.txt",
+            "system/.j720f_stock_adbd_bundle",
             "sbin/libminuitwrp.so",
             "sbin/j720f_runtime_diag.sh",
             "sbin/blkid",
@@ -215,14 +220,24 @@ def main() -> int:
         if "on property:ro.debuggable=1" in init_rc:
             errors.append("init.rc can still start adbd before the device USB action")
         if "write /sys/class/android_usb/android0/enable 1" in init_rc:
-            errors.append("init.rc can still enable the legacy android_usb gadget")
-        if "mount functionfs" in init_rc or "/dev/usb-ffs" in init_rc:
-            errors.append("init.rc still creates the rejected FunctionFS transport")
+            errors.append("generic init.rc can still enable the Samsung USB gadget")
         require_contains(
             errors,
             init_rc,
-            "setprop j720f.usb.legacy_prepare_action 1",
-            "legacy ADB init preparation",
+            "setprop j720f.usb.stock_ffs_prepare_action 1",
+            "stock FunctionFS init preparation",
+        )
+        require_contains(
+            errors,
+            init_rc,
+            "service adbd /system/bin/adbd",
+            "stock Android 10 adbd service",
+        )
+        require_contains(
+            errors,
+            init_rc,
+            "setenv LD_LIBRARY_PATH /system/lib64",
+            "stock Android 10 adbd library path",
         )
         if "/sbin/permissive.sh" in init_rc:
             errors.append("init.rc still invokes the obsolete late-permissive helper")
@@ -258,36 +273,37 @@ def main() -> int:
             errors.append("legacy init fstab still mixes system-vold encryption handling")
 
         ueventd = read_text(root, "ueventd.samsungexynos7885.rc")
-        require_contains(errors, ueventd, "/dev/android_adb", "legacy ADB uevent permissions")
-        require_contains(errors, ueventd, "/dev/android_adb_enable", "legacy ADB uevent permissions")
+        for endpoint in ("/dev/usb-ffs/adb/ep0", "/dev/usb-ffs/adb/ep1", "/dev/usb-ffs/adb/ep2"):
+            require_contains(errors, ueventd, endpoint, "FunctionFS endpoint permissions")
 
         usb = read_text(root, "init.recovery.usb.rc")
         for line in (
             "setprop sys.usb.configfs 1",
             "setprop sys.usb.controller 13600000.dwc3",
             "setprop sys.usb.ffs.ready 0",
-            "setprop j720f.usb.transport legacy-adb",
+            "setprop j720f.usb.transport stock-android10-ffs",
             "mount configfs none /sys/kernel/config",
-            "/sys/kernel/config/usb_gadget/g1/functions/adb.0",
-            "/sys/kernel/config/usb_gadget/g1/configs/c.1/adb.0",
+            "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
+            "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
+            "mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000",
+            "service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh",
+            "on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1",
             "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}",
             "setprop j720f.usb.udc_bind_action 1",
             "setprop sys.usb.config adb",
             "start adbd",
+            "setprop j720f.usb.ffs_mount_action 1",
             "setprop j720f.usb.configfs_action 1",
         ):
-            require_contains(errors, usb, line, "direct legacy ConfigFS ADB rc")
+            require_contains(errors, usb, line, "stock Android 10 FunctionFS ADB rc")
         for forbidden in (
             "mount configfs none /config",
-            "functions/ffs.adb",
-            "configs/c.1/ffs.adb",
-            "on property:sys.usb.ffs.ready=1",
-            "/sys/class/android_usb/android0/f_ffs/aliases",
-            "write /sys/class/android_usb/android0/functions adb",
-            "write /sys/class/android_usb/android0/enable 1",
+            "functions/adb.0",
+            "configs/c.1/adb.0",
+            "/dev/android_adb",
         ):
             if forbidden in usb:
-                errors.append(f"legacy ADB rc contains rejected FunctionFS/android_usb path: {forbidden}")
+                errors.append(f"stock FunctionFS rc contains rejected legacy ADB path: {forbidden}")
         if "/sys/fs/selinux/enforce" in usb or "/sbin/permissive.sh" in usb:
             errors.append("USB rc still contains the failed late-permissive workaround")
         if "mtp" in usb.lower():
@@ -303,7 +319,9 @@ def main() -> int:
             "J720F_RUNTIME_DIAGNOSTICS.txt",
             "service_started=1",
             "DMESG USB/SELINUX",
-            "/dev/android_adb",
+            "STOCK ANDROID 10 ADBD BUNDLE",
+            "/dev/usb-ffs/adb",
+            "/system/bin/adbd",
             "/sys/kernel/config/usb_gadget/g1/functions",
             "/sys/kernel/config/usb_gadget/g1",
             "/sys/class/android_usb/android0",
@@ -364,9 +382,10 @@ def main() -> int:
     recovery_policy = (args.tree / "sepolicy/recovery.te").read_text(errors="ignore")
     adbd_policy = (args.tree / "sepolicy/adbd.te").read_text(errors="ignore")
     all_device_policy = "\n".join((init_policy, recovery_policy, adbd_policy))
-    for domain in ("init", "recovery", "adbd"):
+    for domain in ("init", "recovery"):
         if f"permissive {domain};" in all_device_policy:
             errors.append(f"device policy still declares {domain} permissive")
+    require_contains(errors, adbd_policy, "permissive adbd;", "stock adbd bring-up policy")
 
     for rule in (
         "allow init configfs:file create_file_perms;",
@@ -374,17 +393,20 @@ def main() -> int:
         "allow init sysfs_usb:file rw_file_perms;",
     ):
         require_contains(errors, init_policy, rule, "device init policy")
-    if "functionfs:filesystem" in init_policy:
-        errors.append("device init policy still carries the rejected FunctionFS mount path")
-
     require_contains(
         errors,
-        adbd_policy,
-        "allow adbd adb_device:chr_file rw_file_perms;",
-        "device adbd policy",
+        init_policy,
+        "allow init functionfs:filesystem { getattr mount remount unmount };",
+        "device init FunctionFS policy",
     )
-    if "functionfs:" in adbd_policy or "ffs_prop" in adbd_policy:
-        errors.append("device adbd policy still targets FunctionFS")
+
+    for rule in (
+        "allow adbd functionfs:file rw_file_perms;",
+        "set_prop(adbd, ffs_prop)",
+    ):
+        require_contains(errors, adbd_policy, rule, "device stock adbd policy")
+    if "adb_device:chr_file" in adbd_policy:
+        errors.append("device adbd policy still targets the rejected legacy transport")
 
     policy = recovery_policy
     for rule in (
@@ -413,7 +435,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "source-built Android 7.1 donor-era TWRP 3.3 userspace",
+        "layout": "Android 7.1 TWRP 3.3 UI with pinned CUL1 Android 10 stock-recovery adbd",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),

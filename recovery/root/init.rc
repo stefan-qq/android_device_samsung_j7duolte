@@ -41,10 +41,9 @@ on init
 
 on fs
     mount pstore pstore /sys/fs/pstore
-    # Do not create or mount FunctionFS here. Android 7.1 adbd selects its
-    # transport once at startup: without ep0 it uses /dev/android_adb, matching
-    # the direct adb.0 ConfigFS function that enumerated in the hybrid image.
-    setprop j720f.usb.legacy_prepare_action 1
+    # The device USB rc mounts FunctionFS and starts the pinned Android 10
+    # stock-recovery adbd bundle; keep generic init from racing that sequence.
+    setprop j720f.usb.stock_ffs_prepare_action 1
 
 on boot
     ifup lo
@@ -97,11 +96,12 @@ service ueventd /sbin/ueventd
     critical
     seclabel u:r:ueventd:s0
 
-service adbd /sbin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery
+service adbd /system/bin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery
     disabled
     socket adbd stream 660 system system
+    setenv LD_LIBRARY_PATH /system/lib64
     seclabel u:r:adbd:s0
 
-# The device USB rc owns the complete direct ConfigFS adb.0 lifecycle. There
-# is no generic ro.debuggable or service.adb.root trigger and no FunctionFS
-# mount; adbd must select the kernel /dev/android_adb transport at startup.
+# The device USB rc owns the complete stock Android 10 FunctionFS lifecycle.
+# There is no generic ro.debuggable or service.adb.root trigger, so adbd cannot
+# start before /dev/usb-ffs/adb is mounted.

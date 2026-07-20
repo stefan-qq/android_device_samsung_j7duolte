@@ -43,11 +43,12 @@ SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
     /sbin/cat /proc/mounts 2>&1
 
     echo
-    echo '=== LEGACY ADB DEVICES ==='
-    /sbin/ls -la /dev/android_adb* 2>&1
+    echo '=== STOCK ANDROID 10 ADBD BUNDLE ==='
+    /sbin/ls -la /system/bin/adbd /system/bin/linker64 /system/bin/sh 2>&1
+    /sbin/cat /system/.j720f_stock_adbd_bundle 2>&1
 
     echo
-    echo '=== FUNCTIONFS (EXPECTED ABSENT) ==='
+    echo '=== FUNCTIONFS ==='
     /sbin/ls -ld /dev/usb-ffs /dev/usb-ffs/adb 2>&1
     /sbin/ls -la /dev/usb-ffs/adb 2>&1
 

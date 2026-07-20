@@ -10,6 +10,11 @@ allow init configfs:dir mounton;
 allow init configfs:file create_file_perms;
 allow init configfs:lnk_file create_file_perms;
 
+# FunctionFS mount used by the pinned Android 10 stock-recovery adbd.
+allow init functionfs:filesystem { getattr mount remount unmount };
+allow init functionfs:dir create_dir_perms;
+allow init functionfs:file create_file_perms;
+
 # Samsung android_usb and DWC3 sysfs controls used by init rc.
 allow init sysfs:dir mounton;
 allow init sysfs:dir r_dir_perms;

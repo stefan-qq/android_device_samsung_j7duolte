@@ -1,15 +1,15 @@
-# SM-J720F recovery USB: direct legacy ConfigFS ADB transport.
+# SM-J720F recovery USB: stock Android 10 FunctionFS adbd transport.
 #
-# The uploaded hybrid recovery proved that this stock kernel can enumerate
-# when init creates functions/adb.0 and binds 13600000.dwc3. The working TWRP
-# userspace contains Android 7.1 adbd, which selects /dev/android_adb whenever
-# /dev/usb-ffs/adb/ep0 does not exist at daemon startup.
+# Direct ConfigFS adb.0 was rejected by this DWC3 gadget with -EINVAL even
+# after VBUS and the Samsung peripheral session were active. Use the exact
+# CUL1 stock-recovery adbd/linker/library bundle that previously enumerated,
+# while retaining the proven Android 7.1 TWRP UI and terminal userspace.
 
 on early-init
     setprop sys.usb.configfs 1
     setprop sys.usb.controller 13600000.dwc3
     setprop sys.usb.ffs.ready 0
-    setprop j720f.usb.transport legacy-adb
+    setprop j720f.usb.transport stock-android10-ffs
     setprop j720f.usb.early_init_action 1
 
 on fs
@@ -30,10 +30,13 @@ on fs
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration adb
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/MaxPower 0x3f
 
-    # Keep the configuration purely legacy. ep0 must remain absent before adbd
-    # starts, otherwise this donor-era daemon permanently selects FunctionFS.
-    mkdir /sys/kernel/config/usb_gadget/g1/functions/adb.0 0770 shell shell
-    symlink /sys/kernel/config/usb_gadget/g1/functions/adb.0 /sys/kernel/config/usb_gadget/g1/configs/c.1/adb.0
+    mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
+    symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb
+
+    mkdir /dev/usb-ffs 0775 shell shell
+    mkdir /dev/usb-ffs/adb 0770 shell shell
+    mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000
+    setprop j720f.usb.ffs_mount_action 1
     setprop j720f.usb.configfs_action 1
 
 on boot
@@ -47,13 +50,21 @@ on property:sys.usb.config=none && property:sys.usb.configfs=1
     setprop sys.usb.ffs.ready 0
     setprop sys.usb.state none
 
-# Match the successful hybrid order: bind the direct kernel gadget first, then
-# start Android 7.1 adbd so it opens /dev/android_adb.
+# Start the exact Android 10 stock-recovery adbd after FunctionFS is mounted.
 on property:sys.usb.config=adb && property:sys.usb.configfs=1
-    write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
-    setprop j720f.usb.udc_bind_action 1
     start adbd
     setprop j720f.usb.adbd_start_action 1
+
+# adbd publishes ffs.ready only after it opens ep0 and writes descriptors.
+on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/kernel/config/usb_gadget/g1/idVendor 0x04E8
+    write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
+    write /sys/class/android_usb/android0/f_ffs/aliases adb
+    write /sys/class/android_usb/android0/functions adb
+    write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
+    write /sys/class/android_usb/android0/enable 1
+    setprop j720f.usb.udc_bind_action 1
     setprop sys.usb.state adb
 
 on property:init.svc.adbd=stopped
