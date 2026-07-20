@@ -1,4 +1,4 @@
-# SM-J720F recovery USB: native Android 7.1 FunctionFS adbd transport.
+# SM-J720F recovery USB: native Android 7.1 FunctionFS adbd-domain transport.
 #
 # Keep the exact stock kernel, DT, ConfigFS gadget shape and Samsung VID/PID,
 # but use the adbd built with the same donor-era init, bionic and property
@@ -10,7 +10,7 @@ on early-init
     setprop sys.usb.controller 13600000.dwc3
     setprop sys.usb.ffs.ready 0
     setprop j720f.usb.transport native-android71-ffs
-    setprop j720f.usb.su_policy_fix 1
+    setprop j720f.usb.adbd_domain_only 1
     setprop j720f.usb.early_init_action 1
 
 on fs
@@ -52,6 +52,7 @@ on property:sys.usb.config=none && property:sys.usb.configfs=1
     setprop sys.usb.state none
 
 # Start the native donor-era recovery adbd after FunctionFS is mounted.
+# It remains UID 0 in u:r:adbd:s0; there is no adbd -> su dyntransition.
 on property:sys.usb.config=adb && property:sys.usb.configfs=1
     start adbd
     setprop j720f.usb.adbd_start_action 1
@@ -75,7 +76,7 @@ on property:init.svc.adbd=stopped
 service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh
     class default
     user root
-    group root shell
+    group root shell readproc
     disabled
     oneshot
     seclabel u:r:recovery:s0

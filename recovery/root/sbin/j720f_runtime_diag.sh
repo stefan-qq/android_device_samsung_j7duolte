@@ -48,6 +48,25 @@ SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
     /sbin/sha256sum /sbin/adbd 2>&1
 
     echo
+    echo '=== ADBD PROCESS / CONTEXT / FDS ==='
+    ADBD_PIDS=$(/sbin/pidof adbd 2>/dev/null)
+    echo "pidof=$ADBD_PIDS"
+    echo "init.svc.adbd=$(/sbin/getprop init.svc.adbd 2>&1)"
+    for ADBD_PID in $ADBD_PIDS; do
+        echo "--- pid=$ADBD_PID cmdline"
+        /sbin/tr '\000' ' ' < "/proc/$ADBD_PID/cmdline" 2>&1
+        echo
+        echo "--- pid=$ADBD_PID context"
+        /sbin/cat "/proc/$ADBD_PID/attr/current" 2>&1
+        echo "--- pid=$ADBD_PID status"
+        /sbin/cat "/proc/$ADBD_PID/status" 2>&1
+        echo "--- pid=$ADBD_PID wchan"
+        /sbin/cat "/proc/$ADBD_PID/wchan" 2>&1
+        echo "--- pid=$ADBD_PID fds"
+        /sbin/ls -la "/proc/$ADBD_PID/fd" 2>&1
+    done
+
+    echo
     echo '=== FUNCTIONFS ==='
     /sbin/ls -ld /dev/usb-ffs /dev/usb-ffs/adb 2>&1
     /sbin/ls -la /dev/usb-ffs/adb 2>&1

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the enforcing-policy TWRP 3.3 image for SM-J720F."""
+"""Audit the native adbd-domain TWRP 3.3 image for SM-J720F."""
 
 from __future__ import annotations
 
@@ -225,9 +225,11 @@ def main() -> int:
         require_contains(
             errors,
             init_rc,
-            "service adbd /sbin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery",
+            "service adbd /sbin/adbd --device_banner=recovery",
             "native Android 7.1 adbd service",
         )
+        if "--root_seclabel" in init_rc:
+            errors.append("init.rc still forces the disproven adbd -> su transition")
         if "/sbin/permissive.sh" in init_rc:
             errors.append("init.rc still invokes the obsolete late-permissive helper")
 
@@ -271,7 +273,7 @@ def main() -> int:
             "setprop sys.usb.controller 13600000.dwc3",
             "setprop sys.usb.ffs.ready 0",
             "setprop j720f.usb.transport native-android71-ffs",
-            "setprop j720f.usb.su_policy_fix 1",
+            "setprop j720f.usb.adbd_domain_only 1",
             "mount configfs none /sys/kernel/config",
             "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
             "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
@@ -310,6 +312,8 @@ def main() -> int:
             "service_started=1",
             "DMESG USB/SELINUX",
             "NATIVE ANDROID 7.1 RECOVERY ADBD",
+            "ADBD PROCESS / CONTEXT / FDS",
+            "pidof adbd",
             "/dev/usb-ffs/adb",
             "/sbin/adbd",
             "/sys/kernel/config/usb_gadget/g1/functions",
@@ -329,6 +333,7 @@ def main() -> int:
 
         for line in (
             "service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh",
+            "group root shell readproc",
             "seclabel u:r:recovery:s0",
             "on property:init.svc.recovery=running",
             "setprop j720f.diag.triggered 1",
@@ -376,8 +381,10 @@ def main() -> int:
     init_policy = (args.tree / "sepolicy/init.te").read_text(errors="ignore")
     recovery_policy = (args.tree / "sepolicy/recovery.te").read_text(errors="ignore")
     adbd_policy = (args.tree / "sepolicy/adbd.te").read_text(errors="ignore")
-    su_policy = (args.tree / "sepolicy/su.te").read_text(errors="ignore")
-    all_device_policy = "\n".join((init_policy, recovery_policy, adbd_policy, su_policy))
+    su_policy_path = args.tree / "sepolicy/su.te"
+    if su_policy_path.exists():
+        errors.append("device policy still carries the disproven custom su-domain USB rules")
+    all_device_policy = "\n".join((init_policy, recovery_policy, adbd_policy))
     for domain in ("init", "recovery"):
         if f"permissive {domain};" in all_device_policy:
             errors.append(f"device policy still declares {domain} permissive")
@@ -402,13 +409,6 @@ def main() -> int:
         "set_prop(adbd, ffs_prop)",
     ):
         require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
-    for rule in (
-        "allow su functionfs:filesystem getattr;",
-        "allow su functionfs:dir r_dir_perms;",
-        "allow su functionfs:file rw_file_perms;",
-        "set_prop(su, ffs_prop)",
-    ):
-        require_contains(errors, su_policy, rule, "device native adbd su-domain policy")
     if "adb_device:chr_file" in adbd_policy:
         errors.append("device adbd policy still targets the rejected legacy transport")
 
@@ -439,7 +439,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Coherent Android 7.1 TWRP 3.3 native FunctionFS adbd with explicit su-domain USB policy and pinned CUL1 kernel/DT",
+        "layout": "Coherent Android 7.1 TWRP 3.3 native FunctionFS adbd kept in the adbd domain with pinned CUL1 kernel/DT",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),

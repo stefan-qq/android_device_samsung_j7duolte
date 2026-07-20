@@ -1,10 +1,7 @@
-# The native Android 7.1 adbd starts in the adbd domain. Keep the standard
-# FunctionFS permissions here for the startup phase before its root transition.
+# Native Android 7.1 adbd remains UID 0 in u:r:adbd:s0.
+# Avoid the --root_seclabel transition to su and grant the actual runtime
+# domain the FunctionFS and ffs.ready property operations it needs.
 allow adbd functionfs:filesystem getattr;
 allow adbd functionfs:dir r_dir_perms;
 allow adbd functionfs:file rw_file_perms;
 set_prop(adbd, ffs_prop)
-
-# Do not rely on a permissive declaration: the Samsung CUL1 kernel forces
-# enforcing behavior. The service requests --root_seclabel=u:r:su:s0, so the
-# actual FunctionFS open/write loop and ffs.ready publication run as su.

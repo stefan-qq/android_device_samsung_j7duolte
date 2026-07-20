@@ -81,8 +81,8 @@ RECOVERY_SDCARD_ON_DATA := true
 TW_DEFAULT_EXTERNAL_STORAGE := true
 
 # Keep MTP out of this one root-cause build. ADB and MTP share the same USB
-# gadget/UDC path; first prove the enforcing SELinux rules, then enable MTP in
-# a small follow-up without mixing another daemon and gadget function here.
+# gadget/UDC path; first prove native adbd while it stays in u:r:adbd:s0, then
+# enable MTP in a small follow-up without mixing another daemon here.
 TW_EXCLUDE_MTP := true
 TW_EXCLUDE_TWRPAPP := true
 TW_EXCLUDE_SUPERSU := true
