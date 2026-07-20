@@ -24,3 +24,11 @@ a format before it can be mounted by this old recovery userspace.
 
 MTP remains disabled until ADB is proven stable. Do not wipe or restore EFS or
 CPEFS while validating recovery bring-up.
+
+
+## USB architecture
+
+The recovery keeps one coherent donor-era Android 7.1 userspace for init, TWRP,
+bionic, the property service and adbd. It reuses only the exact CUL1 stock
+kernel/DT and Samsung ConfigFS gadget parameters. The experimental Android 10
+adbd/linker/library bundle is intentionally not packaged.

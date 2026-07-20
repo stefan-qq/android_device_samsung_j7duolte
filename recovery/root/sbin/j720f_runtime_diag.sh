@@ -43,9 +43,9 @@ SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
     /sbin/cat /proc/mounts 2>&1
 
     echo
-    echo '=== STOCK ANDROID 10 ADBD BUNDLE ==='
-    /sbin/ls -la /system/bin/adbd /system/bin/linker64 /system/bin/sh 2>&1
-    /sbin/cat /system/etc/j720f-stock-adbd-bundle.txt 2>&1
+    echo '=== NATIVE ANDROID 7.1 RECOVERY ADBD ==='
+    /sbin/ls -la /sbin/adbd 2>&1
+    /sbin/sha256sum /sbin/adbd 2>&1
 
     echo
     echo '=== FUNCTIONFS ==='

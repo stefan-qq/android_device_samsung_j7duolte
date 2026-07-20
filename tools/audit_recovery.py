@@ -19,7 +19,6 @@ LIMIT = 39_845_888
 PAGE = 2048
 EXPECTED_KERNEL_SHA256 = "f91660e294f4532d266d23f386f99f4e9c290859154236d82e5280af9f11d268"
 EXPECTED_DT_SHA256 = "25fd9f99fcb520b117475c812302afdfd53f8f36dbcda6a9416429b2401ddafb"
-EXPECTED_STOCK_ADBD_SHA256 = "e5a1dff495b94d469ec4cfcda60efbc2a674c769acbf7c6447f5e994542ee84a"
 
 
 def align(value: int, page: int = PAGE) -> int:
@@ -169,11 +168,6 @@ def main() -> int:
             "sepolicy",
             "sbin/recovery",
             "sbin/adbd",
-            "system/bin/adbd",
-            "system/bin/linker64",
-            "system/bin/sh",
-            "system/etc/ld.config.txt",
-            "system/etc/j720f-stock-adbd-bundle.txt",
             "sbin/libminuitwrp.so",
             "sbin/j720f_runtime_diag.sh",
             "sbin/blkid",
@@ -187,20 +181,6 @@ def main() -> int:
         for relative in ("external_sd", "external_sd/j720f.mountpoint"):
             if relative not in normalized and not (root / relative).exists():
                 errors.append(f"generated ramdisk is missing {relative}")
-
-        bundle_marker = read_text(root, "system/etc/j720f-stock-adbd-bundle.txt")
-        require_contains(
-            errors,
-            bundle_marker,
-            "source=J720F CUL1 stock recovery",
-            "stock adbd bundle marker",
-        )
-        require_contains(
-            errors,
-            bundle_marker,
-            f"adbd_sha256={EXPECTED_STOCK_ADBD_SHA256}",
-            "stock adbd bundle marker",
-        )
 
         init_path = root / "init"
         if init_path.is_symlink():
@@ -239,20 +219,14 @@ def main() -> int:
         require_contains(
             errors,
             init_rc,
-            "setprop j720f.usb.stock_ffs_prepare_action 1",
-            "stock FunctionFS init preparation",
+            "setprop j720f.usb.native_prepare 1",
+            "native FunctionFS init preparation",
         )
         require_contains(
             errors,
             init_rc,
-            "service adbd /system/bin/adbd",
-            "stock Android 10 adbd service",
-        )
-        require_contains(
-            errors,
-            init_rc,
-            "setenv LD_LIBRARY_PATH /system/lib64",
-            "stock Android 10 adbd library path",
+            "service adbd /sbin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery",
+            "native Android 7.1 adbd service",
         )
         if "/sbin/permissive.sh" in init_rc:
             errors.append("init.rc still invokes the obsolete late-permissive helper")
@@ -296,7 +270,7 @@ def main() -> int:
             "setprop sys.usb.configfs 1",
             "setprop sys.usb.controller 13600000.dwc3",
             "setprop sys.usb.ffs.ready 0",
-            "setprop j720f.usb.transport stock-android10-ffs",
+            "setprop j720f.usb.transport native-android71-ffs",
             "mount configfs none /sys/kernel/config",
             "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
             "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
@@ -310,7 +284,7 @@ def main() -> int:
             "setprop j720f.usb.ffs_mount_action 1",
             "setprop j720f.usb.configfs_action 1",
         ):
-            require_contains(errors, usb, line, "stock Android 10 FunctionFS ADB rc")
+            require_contains(errors, usb, line, "native Android 7.1 FunctionFS ADB rc")
         for forbidden in (
             "mount configfs none /config",
             "functions/adb.0",
@@ -318,7 +292,7 @@ def main() -> int:
             "/dev/android_adb",
         ):
             if forbidden in usb:
-                errors.append(f"stock FunctionFS rc contains rejected legacy ADB path: {forbidden}")
+                errors.append(f"native FunctionFS rc contains rejected legacy ADB path: {forbidden}")
         if "/sys/fs/selinux/enforce" in usb or "/sbin/permissive.sh" in usb:
             errors.append("USB rc still contains the failed late-permissive workaround")
         if "mtp" in usb.lower():
@@ -334,9 +308,9 @@ def main() -> int:
             "J720F_RUNTIME_DIAGNOSTICS.txt",
             "service_started=1",
             "DMESG USB/SELINUX",
-            "STOCK ANDROID 10 ADBD BUNDLE",
+            "NATIVE ANDROID 7.1 RECOVERY ADBD",
             "/dev/usb-ffs/adb",
-            "/system/bin/adbd",
+            "/sbin/adbd",
             "/sys/kernel/config/usb_gadget/g1/functions",
             "/sys/kernel/config/usb_gadget/g1",
             "/sys/class/android_usb/android0",
@@ -365,6 +339,11 @@ def main() -> int:
             "init.recovery.vold_decrypt.rc",
             "sbin/libtwrpmtp-legacy.so",
             "system/bin/init",
+            "system/bin/adbd",
+            "system/bin/linker64",
+            "system/lib64/libadbd.so",
+            "system/.j720f_stock_adbd_bundle",
+            "system/etc/j720f-stock-adbd-bundle.txt",
         }
         for relative in sorted(forbidden_ramdisk):
             if relative in normalized or (root / relative).exists():
@@ -400,7 +379,7 @@ def main() -> int:
     for domain in ("init", "recovery"):
         if f"permissive {domain};" in all_device_policy:
             errors.append(f"device policy still declares {domain} permissive")
-    require_contains(errors, adbd_policy, "permissive adbd;", "stock adbd bring-up policy")
+    require_contains(errors, adbd_policy, "permissive adbd;", "native adbd bring-up policy")
 
     for rule in (
         "allow init configfs:file create_file_perms;",
@@ -419,7 +398,7 @@ def main() -> int:
         "allow adbd functionfs:file rw_file_perms;",
         "set_prop(adbd, ffs_prop)",
     ):
-        require_contains(errors, adbd_policy, rule, "device stock adbd policy")
+        require_contains(errors, adbd_policy, rule, "device native adbd policy")
     if "adb_device:chr_file" in adbd_policy:
         errors.append("device adbd policy still targets the rejected legacy transport")
 
@@ -450,7 +429,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Android 7.1 TWRP 3.3 UI with pinned CUL1 Android 10 stock-recovery adbd",
+        "layout": "Coherent Android 7.1 TWRP 3.3 userspace with native FunctionFS adbd and pinned CUL1 kernel/DT",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),
