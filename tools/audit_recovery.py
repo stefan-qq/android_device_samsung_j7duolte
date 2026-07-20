@@ -216,6 +216,14 @@ def main() -> int:
             errors.append("init.rc can still start adbd before the device USB action")
         if "write /sys/class/android_usb/android0/enable 1" in init_rc:
             errors.append("init.rc can still enable the legacy android_usb gadget")
+        if "mount functionfs" in init_rc or "/dev/usb-ffs" in init_rc:
+            errors.append("init.rc still creates the rejected FunctionFS transport")
+        require_contains(
+            errors,
+            init_rc,
+            "setprop j720f.usb.legacy_prepare_action 1",
+            "legacy ADB init preparation",
+        )
         if "/sbin/permissive.sh" in init_rc:
             errors.append("init.rc still invokes the obsolete late-permissive helper")
 
@@ -249,27 +257,37 @@ def main() -> int:
         if "encryptable=footer" in android_fstab:
             errors.append("legacy init fstab still mixes system-vold encryption handling")
 
+        ueventd = read_text(root, "ueventd.samsungexynos7885.rc")
+        require_contains(errors, ueventd, "/dev/android_adb", "legacy ADB uevent permissions")
+        require_contains(errors, ueventd, "/dev/android_adb_enable", "legacy ADB uevent permissions")
+
         usb = read_text(root, "init.recovery.usb.rc")
         for line in (
             "setprop sys.usb.configfs 1",
             "setprop sys.usb.controller 13600000.dwc3",
             "setprop sys.usb.ffs.ready 0",
+            "setprop j720f.usb.transport legacy-adb",
             "mount configfs none /sys/kernel/config",
-            "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
-            "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
-            "on property:sys.usb.ffs.ready=1",
+            "/sys/kernel/config/usb_gadget/g1/functions/adb.0",
+            "/sys/kernel/config/usb_gadget/g1/configs/c.1/adb.0",
             "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}",
-            "write /sys/class/android_usb/android0/f_ffs/aliases adb",
-            "write /sys/class/android_usb/android0/functions adb",
-            "write /sys/class/android_usb/android0/enable 1",
+            "setprop j720f.usb.udc_bind_action 1",
             "setprop sys.usb.config adb",
             "start adbd",
             "setprop j720f.usb.configfs_action 1",
-            "setprop j720f.usb.ffs_ready_action 1",
         ):
-            require_contains(errors, usb, line, "stock-kernel hybrid USB rc")
-        if "mount configfs none /config" in usb:
-            errors.append("USB rc still uses the rejected /config mountpoint")
+            require_contains(errors, usb, line, "direct legacy ConfigFS ADB rc")
+        for forbidden in (
+            "mount configfs none /config",
+            "functions/ffs.adb",
+            "configs/c.1/ffs.adb",
+            "on property:sys.usb.ffs.ready=1",
+            "/sys/class/android_usb/android0/f_ffs/aliases",
+            "write /sys/class/android_usb/android0/functions adb",
+            "write /sys/class/android_usb/android0/enable 1",
+        ):
+            if forbidden in usb:
+                errors.append(f"legacy ADB rc contains rejected FunctionFS/android_usb path: {forbidden}")
         if "/sys/fs/selinux/enforce" in usb or "/sbin/permissive.sh" in usb:
             errors.append("USB rc still contains the failed late-permissive workaround")
         if "mtp" in usb.lower():
@@ -285,6 +303,8 @@ def main() -> int:
             "J720F_RUNTIME_DIAGNOSTICS.txt",
             "service_started=1",
             "DMESG USB/SELINUX",
+            "/dev/android_adb",
+            "/sys/kernel/config/usb_gadget/g1/functions",
             "/sys/kernel/config/usb_gadget/g1",
             "/sys/class/android_usb/android0",
         ):
@@ -351,16 +371,20 @@ def main() -> int:
     for rule in (
         "allow init configfs:file create_file_perms;",
         "allow init configfs:lnk_file create_file_perms;",
-        "allow init functionfs:filesystem { getattr mount remount unmount };",
         "allow init sysfs_usb:file rw_file_perms;",
     ):
         require_contains(errors, init_policy, rule, "device init policy")
+    if "functionfs:filesystem" in init_policy:
+        errors.append("device init policy still carries the rejected FunctionFS mount path")
 
-    for rule in (
-        "allow adbd functionfs:file rw_file_perms;",
-        "set_prop(adbd, ffs_prop)",
-    ):
-        require_contains(errors, adbd_policy, rule, "device adbd policy")
+    require_contains(
+        errors,
+        adbd_policy,
+        "allow adbd adb_device:chr_file rw_file_perms;",
+        "device adbd policy",
+    )
+    if "functionfs:" in adbd_policy or "ffs_prop" in adbd_policy:
+        errors.append("device adbd policy still targets FunctionFS")
 
     policy = recovery_policy
     for rule in (

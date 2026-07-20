@@ -41,10 +41,10 @@ on init
 
 on fs
     mount pstore pstore /sys/fs/pstore
-    mkdir /dev/usb-ffs 0770 shell shell
-    mkdir /dev/usb-ffs/adb 0770 shell shell
-    mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000
-    setprop j720f.usb.ffs_mount_action 1
+    # Do not create or mount FunctionFS here. Android 7.1 adbd selects its
+    # transport once at startup: without ep0 it uses /dev/android_adb, matching
+    # the direct adb.0 ConfigFS function that enumerated in the hybrid image.
+    setprop j720f.usb.legacy_prepare_action 1
 
 on boot
     ifup lo
@@ -102,6 +102,6 @@ service adbd /sbin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery
     socket adbd stream 660 system system
     seclabel u:r:adbd:s0
 
-# The device USB rc owns the complete stock-kernel hybrid ADB lifecycle. There
-# is no generic ro.debuggable or service.adb.root trigger here; the Samsung
-# android_usb handoff occurs only after FunctionFS reports ready.
+# The device USB rc owns the complete direct ConfigFS adb.0 lifecycle. There
+# is no generic ro.debuggable or service.adb.root trigger and no FunctionFS
+# mount; adbd must select the kernel /dev/android_adb transport at startup.

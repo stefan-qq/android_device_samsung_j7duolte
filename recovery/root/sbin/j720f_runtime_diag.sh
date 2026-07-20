@@ -30,6 +30,11 @@ SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
     /sbin/cat /proc/cmdline 2>&1
 
     echo
+    echo '=== ID / CAPABILITIES ==='
+    /sbin/id 2>&1
+    /sbin/grep -E '^(Uid|Gid|Cap(Inh|Prm|Eff|Bnd)):' /proc/self/status 2>&1
+
+    echo
     echo '=== PROPERTIES ==='
     /sbin/getprop 2>&1
 
@@ -38,7 +43,11 @@ SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
     /sbin/cat /proc/mounts 2>&1
 
     echo
-    echo '=== FUNCTIONFS ==='
+    echo '=== LEGACY ADB DEVICES ==='
+    /sbin/ls -la /dev/android_adb* 2>&1
+
+    echo
+    echo '=== FUNCTIONFS (EXPECTED ABSENT) ==='
     /sbin/ls -ld /dev/usb-ffs /dev/usb-ffs/adb 2>&1
     /sbin/ls -la /dev/usb-ffs/adb 2>&1
 
@@ -46,6 +55,8 @@ SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
     echo '=== CONFIGFS ==='
     /sbin/ls -ld /sys/kernel/config 2>&1
     /sbin/ls -la /sys/kernel/config/usb_gadget/g1 2>&1
+    /sbin/ls -la /sys/kernel/config/usb_gadget/g1/functions 2>&1
+    /sbin/ls -la /sys/kernel/config/usb_gadget/g1/configs/c.1 2>&1
     for F in \
         /sys/kernel/config/usb_gadget/g1/UDC \
         /sys/kernel/config/usb_gadget/g1/idVendor \

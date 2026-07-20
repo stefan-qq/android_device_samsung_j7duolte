@@ -1,24 +1,23 @@
-# SM-J720F recovery USB: stock-kernel Samsung hybrid ADB gadget.
-# The CUL1 Android 10 stock recovery mounts ConfigFS at /sys/kernel/config
-# and requires both the ConfigFS UDC bind and the legacy android_usb handoff.
+# SM-J720F recovery USB: direct legacy ConfigFS ADB transport.
+#
+# The uploaded hybrid recovery proved that this stock kernel can enumerate
+# when init creates functions/adb.0 and binds 13600000.dwc3. The working TWRP
+# userspace contains Android 7.1 adbd, which selects /dev/android_adb whenever
+# /dev/usb-ffs/adb/ep0 does not exist at daemon startup.
 
 on early-init
     setprop sys.usb.configfs 1
     setprop sys.usb.controller 13600000.dwc3
     setprop sys.usb.ffs.ready 0
+    setprop j720f.usb.transport legacy-adb
     setprop j720f.usb.early_init_action 1
 
 on fs
-    # Start from a disconnected legacy gadget.
-    write /sys/class/android_usb/android0/enable 0
-
-    # Match the exact stock Android 10 recovery mountpoint and layout.
     mount configfs none /sys/kernel/config
     mkdir /sys/kernel/config/usb_gadget/g1 0770 root root
     mkdir /sys/kernel/config/usb_gadget/g1/strings/0x409 0770 root root
     mkdir /sys/kernel/config/usb_gadget/g1/configs/c.1 0770 root root
     mkdir /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409 0770 root root
-    mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
 
     write /sys/kernel/config/usb_gadget/g1/idVendor 0x04E8
     write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
@@ -30,48 +29,37 @@ on fs
     write /sys/kernel/config/usb_gadget/g1/strings/0x409/product SAMSUNG_Android
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration adb
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/MaxPower 0x3f
-    rm /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb
-    symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb
+
+    # Keep the configuration purely legacy. ep0 must remain absent before adbd
+    # starts, otherwise this donor-era daemon permanently selects FunctionFS.
+    mkdir /sys/kernel/config/usb_gadget/g1/functions/adb.0 0770 shell shell
+    symlink /sys/kernel/config/usb_gadget/g1/functions/adb.0 /sys/kernel/config/usb_gadget/g1/configs/c.1/adb.0
     setprop j720f.usb.configfs_action 1
 
-# Force a clean property edge after all fs actions, including the FunctionFS
-# mount in /init.rc, have completed.
 on boot
     setprop j720f.usb.boot_action 1
     setprop sys.usb.config none
     setprop sys.usb.config adb
 
 on property:sys.usb.config=none && property:sys.usb.configfs=1
-    write /sys/class/android_usb/android0/enable 0
     write /sys/kernel/config/usb_gadget/g1/UDC none
     stop adbd
     setprop sys.usb.ffs.ready 0
     setprop sys.usb.state none
 
+# Match the successful hybrid order: bind the direct kernel gadget first, then
+# start Android 7.1 adbd so it opens /dev/android_adb.
 on property:sys.usb.config=adb && property:sys.usb.configfs=1
-    setprop j720f.usb.adbd_start_action 1
-    start adbd
-
-# This is the exact Samsung CUL1 recovery handoff: adbd first publishes its
-# FunctionFS descriptors, then ConfigFS binds the DWC3 UDC and android_usb
-# exposes the ADB function to the Samsung composite glue.
-on property:sys.usb.ffs.ready=1 && property:sys.usb.config=adb && property:sys.usb.configfs=1
-    setprop j720f.usb.ffs_ready_action 1
-    write /sys/class/android_usb/android0/enable 0
-    write /sys/kernel/config/usb_gadget/g1/idVendor 0x04E8
-    write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
-    write /sys/class/android_usb/android0/f_ffs/aliases adb
-    write /sys/class/android_usb/android0/functions adb
     write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
-    write /sys/class/android_usb/android0/enable 1
+    setprop j720f.usb.udc_bind_action 1
+    start adbd
+    setprop j720f.usb.adbd_start_action 1
     setprop sys.usb.state adb
 
 on property:init.svc.adbd=stopped
     setprop sys.usb.ffs.ready 0
 
-# RC2.3.1 diagnostics run independently of the TWRP startup path. This service
-# is read-only: it does not call twrp, mount filesystems, restart adbd or write
-# USB sysfs nodes.
+# Safe asynchronous runtime report.
 service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh
     class default
     user root
