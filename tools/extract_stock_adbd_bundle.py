@@ -159,7 +159,7 @@ def main() -> int:
     if sha256(linker) != STOCK_LINKER_SHA256:
         raise SystemExit("extracted Android 10 linker64 hash mismatch")
 
-    marker = args.recovery_root / "system/.j720f_stock_adbd_bundle"
+    marker = args.recovery_root / "system/etc/j720f-stock-adbd-bundle.txt"
     marker.write_text(
         "source=J720F CUL1 stock recovery\n"
         f"adbd_sha256={STOCK_ADBD_SHA256}\n"

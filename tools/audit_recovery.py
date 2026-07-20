@@ -19,6 +19,7 @@ LIMIT = 39_845_888
 PAGE = 2048
 EXPECTED_KERNEL_SHA256 = "f91660e294f4532d266d23f386f99f4e9c290859154236d82e5280af9f11d268"
 EXPECTED_DT_SHA256 = "25fd9f99fcb520b117475c812302afdfd53f8f36dbcda6a9416429b2401ddafb"
+EXPECTED_STOCK_ADBD_SHA256 = "e5a1dff495b94d469ec4cfcda60efbc2a674c769acbf7c6447f5e994542ee84a"
 
 
 def align(value: int, page: int = PAGE) -> int:
@@ -172,7 +173,7 @@ def main() -> int:
             "system/bin/linker64",
             "system/bin/sh",
             "system/etc/ld.config.txt",
-            "system/.j720f_stock_adbd_bundle",
+            "system/etc/j720f-stock-adbd-bundle.txt",
             "sbin/libminuitwrp.so",
             "sbin/j720f_runtime_diag.sh",
             "sbin/blkid",
@@ -186,6 +187,20 @@ def main() -> int:
         for relative in ("external_sd", "external_sd/j720f.mountpoint"):
             if relative not in normalized and not (root / relative).exists():
                 errors.append(f"generated ramdisk is missing {relative}")
+
+        bundle_marker = read_text(root, "system/etc/j720f-stock-adbd-bundle.txt")
+        require_contains(
+            errors,
+            bundle_marker,
+            "source=J720F CUL1 stock recovery",
+            "stock adbd bundle marker",
+        )
+        require_contains(
+            errors,
+            bundle_marker,
+            f"adbd_sha256={EXPECTED_STOCK_ADBD_SHA256}",
+            "stock adbd bundle marker",
+        )
 
         init_path = root / "init"
         if init_path.is_symlink():
