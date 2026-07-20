@@ -271,6 +271,7 @@ def main() -> int:
             "setprop sys.usb.controller 13600000.dwc3",
             "setprop sys.usb.ffs.ready 0",
             "setprop j720f.usb.transport native-android71-ffs",
+            "setprop j720f.usb.su_policy_fix 1",
             "mount configfs none /sys/kernel/config",
             "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
             "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
@@ -375,11 +376,13 @@ def main() -> int:
     init_policy = (args.tree / "sepolicy/init.te").read_text(errors="ignore")
     recovery_policy = (args.tree / "sepolicy/recovery.te").read_text(errors="ignore")
     adbd_policy = (args.tree / "sepolicy/adbd.te").read_text(errors="ignore")
-    all_device_policy = "\n".join((init_policy, recovery_policy, adbd_policy))
+    su_policy = (args.tree / "sepolicy/su.te").read_text(errors="ignore")
+    all_device_policy = "\n".join((init_policy, recovery_policy, adbd_policy, su_policy))
     for domain in ("init", "recovery"):
         if f"permissive {domain};" in all_device_policy:
             errors.append(f"device policy still declares {domain} permissive")
-    require_contains(errors, adbd_policy, "permissive adbd;", "native adbd bring-up policy")
+    if "permissive adbd;" in adbd_policy:
+        errors.append("device adbd policy still relies on ineffective permissive mode")
 
     for rule in (
         "allow init configfs:file create_file_perms;",
@@ -398,7 +401,14 @@ def main() -> int:
         "allow adbd functionfs:file rw_file_perms;",
         "set_prop(adbd, ffs_prop)",
     ):
-        require_contains(errors, adbd_policy, rule, "device native adbd policy")
+        require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
+    for rule in (
+        "allow su functionfs:filesystem getattr;",
+        "allow su functionfs:dir r_dir_perms;",
+        "allow su functionfs:file rw_file_perms;",
+        "set_prop(su, ffs_prop)",
+    ):
+        require_contains(errors, su_policy, rule, "device native adbd su-domain policy")
     if "adb_device:chr_file" in adbd_policy:
         errors.append("device adbd policy still targets the rejected legacy transport")
 
@@ -429,7 +439,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Coherent Android 7.1 TWRP 3.3 userspace with native FunctionFS adbd and pinned CUL1 kernel/DT",
+        "layout": "Coherent Android 7.1 TWRP 3.3 native FunctionFS adbd with explicit su-domain USB policy and pinned CUL1 kernel/DT",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),

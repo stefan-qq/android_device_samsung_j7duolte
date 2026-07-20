@@ -1,0 +1,8 @@
+# Android 7.1 adbd changes from adbd to su before usb_init() when ro.secure=0
+# and --root_seclabel=u:r:su:s0 is supplied. Samsung's CUL1 kernel forces
+# enforcing behavior, so the donor policy's permissive-su fallback is not
+# sufficient. Grant the exact operations used by the FunctionFS transport.
+allow su functionfs:filesystem getattr;
+allow su functionfs:dir r_dir_perms;
+allow su functionfs:file rw_file_perms;
+set_prop(su, ffs_prop)

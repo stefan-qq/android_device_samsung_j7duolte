@@ -1,11 +1,10 @@
-# The pinned Android 10 stock-recovery adbd writes FunctionFS descriptors,
-# publishes sys.usb.ffs.ready, and then serves the recovery transport.
+# The native Android 7.1 adbd starts in the adbd domain. Keep the standard
+# FunctionFS permissions here for the startup phase before its root transition.
 allow adbd functionfs:filesystem getattr;
 allow adbd functionfs:dir r_dir_perms;
 allow adbd functionfs:file rw_file_perms;
 set_prop(adbd, ffs_prop)
 
-# Recovery-only bring-up: the Android 10 daemon comes from a newer policy
-# generation than this Android 7.1 TWRP base. Keep only adbd permissive for the
-# hardware test; init remains enforcing and owns all gadget construction.
-permissive adbd;
+# Do not rely on a permissive declaration: the Samsung CUL1 kernel forces
+# enforcing behavior. The service requests --root_seclabel=u:r:su:s0, so the
+# actual FunctionFS open/write loop and ffs.ready publication run as su.

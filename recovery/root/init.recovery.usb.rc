@@ -10,6 +10,7 @@ on early-init
     setprop sys.usb.controller 13600000.dwc3
     setprop sys.usb.ffs.ready 0
     setprop j720f.usb.transport native-android71-ffs
+    setprop j720f.usb.su_policy_fix 1
     setprop j720f.usb.early_init_action 1
 
 on fs
