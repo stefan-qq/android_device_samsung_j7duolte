@@ -103,6 +103,7 @@ service adbd /sbin/adbd --device_banner=recovery
 
 # Keep the USB daemon in the same Android 7.1 recovery userspace as init,
 # TWRP, bionic and the property service. ro.secure=0 keeps UID 0, while omitting
-# --root_seclabel avoids the failing adbd -> su SELinux dyntransition. The
+# Omitting the optional root SELinux label avoids the failing adbd -> su
+# dyntransition. The
 # device USB rc owns the complete FunctionFS lifecycle so adbd cannot start
 # before /dev/usb-ffs/adb is mounted.

@@ -8,6 +8,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import struct
@@ -228,7 +229,11 @@ def main() -> int:
             "service adbd /sbin/adbd --device_banner=recovery",
             "native Android 7.1 adbd service",
         )
-        if "--root_seclabel" in init_rc:
+        if re.search(
+            r"(?m)^[ \t]*service[ \t]+adbd[ \t]+[^\n#]*"
+            r"--root_seclabel(?:=|[ \t]|$)",
+            init_rc,
+        ):
             errors.append("init.rc still forces the disproven adbd -> su transition")
         if "/sbin/permissive.sh" in init_rc:
             errors.append("init.rc still invokes the obsolete late-permissive helper")
