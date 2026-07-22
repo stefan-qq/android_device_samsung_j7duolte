@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the native adbd-domain TWRP 3.3 image for SM-J720F."""
+"""Audit the native direct-FunctionFS-trace TWRP 3.3 image for SM-J720F."""
 
 from __future__ import annotations
 
@@ -171,6 +171,7 @@ def main() -> int:
             "sbin/adbd",
             "sbin/libminuitwrp.so",
             "sbin/j720f_runtime_diag.sh",
+            "sbin/j720f_collect_direct_usb_trace.sh",
             "sbin/blkid",
             "sbin/hexdump",
             "sbin/head",
@@ -198,6 +199,17 @@ def main() -> int:
             errors.append("/sbin/recovery is missing the writable /tmp ORS FIFO paths")
         if b"/sbin/orsin" in recovery or b"/sbin/orsout" in recovery:
             errors.append("/sbin/recovery still embeds read-only /sbin ORS FIFO paths")
+
+        adbd = (root / "sbin/adbd").read_bytes() if (root / "sbin/adbd").is_file() else b""
+        for marker in (
+            b"/tmp/J720F_ADBD_USB_TRACE.txt",
+            b"J720F_USB_DIAG",
+            b"/tmp/J720F_ADBD_TRACE.txt",
+        ):
+            if marker not in adbd:
+                errors.append(f"instrumented /sbin/adbd is missing marker: {marker!r}")
+        if b"/data/adb/adb-" in adbd:
+            errors.append("instrumented /sbin/adbd still writes its native trace under /data")
 
         service_rc = read_text(root, "init.recovery.service.rc")
         require_contains(errors, service_rc, "service recovery /sbin/recovery", "recovery service rc")
@@ -279,6 +291,11 @@ def main() -> int:
             "setprop sys.usb.ffs.ready 0",
             "setprop j720f.usb.transport native-android71-ffs",
             "setprop j720f.usb.adbd_domain_only 1",
+            "setprop j720f.usb.direct_trace 1",
+            "setprop persist.adb.trace_mask all",
+            "write /tmp/J720F_ADBD_USB_TRACE.txt J720F_USB_DIAG_INIT_PRECREATED",
+            "write /tmp/J720F_ADBD_TRACE.txt J720F_ADBD_TRACE_INIT_PRECREATED",
+            "setprop j720f.usb.trace_files_precreated 1",
             "mount configfs none /sys/kernel/config",
             "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
             "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
@@ -318,6 +335,11 @@ def main() -> int:
             "DMESG USB/SELINUX",
             "NATIVE ANDROID 7.1 RECOVERY ADBD",
             "ADBD PROCESS / CONTEXT / FDS",
+            "DIRECT ADBD FUNCTIONFS SYSCALL TRACE",
+            "NATIVE ADB TRACE",
+            "/tmp/J720F_ADBD_USB_TRACE.txt",
+            "/tmp/J720F_ADBD_TRACE.txt",
+            "j720f_collect_direct_usb_trace.sh auto",
             "pidof adbd",
             "/dev/usb-ffs/adb",
             "/sbin/adbd",
@@ -335,6 +357,20 @@ def main() -> int:
         ):
             if forbidden in diag:
                 errors.append(f"safe diagnostic script contains forbidden operation: {forbidden}")
+
+        collector = read_text(root, "sbin/j720f_collect_direct_usb_trace.sh")
+        for line in (
+            "J720F_DIRECT_USB_TRACE",
+            "J720F_ADBD_USB_TRACE.txt",
+            "J720F_ADBD_TRACE.txt",
+            "J720F_RUNTIME_DIAGNOSTICS.txt",
+            "collection_summary.txt",
+            "trace_metadata.txt",
+        ):
+            require_contains(errors, collector, line, "direct USB trace collector")
+        for forbidden in ("mount -t", "ctl.stop", "ctl.start", "Format Data"):
+            if forbidden in collector:
+                errors.append(f"direct USB trace collector contains forbidden operation: {forbidden}")
 
         for line in (
             "service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh",
@@ -412,6 +448,8 @@ def main() -> int:
     for rule in (
         "allow adbd functionfs:file rw_file_perms;",
         "set_prop(adbd, ffs_prop)",
+        "allow adbd tmpfs:dir rw_dir_perms;",
+        "allow adbd tmpfs:file create_file_perms;",
     ):
         require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
     if "adb_device:chr_file" in adbd_policy:
@@ -444,7 +482,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Coherent Android 7.1 TWRP 3.3 native FunctionFS adbd kept in the adbd domain with pinned CUL1 kernel/DT",
+        "layout": "Android 7.1 TWRP 3.3 direct FunctionFS syscall/native-adbd trace build with pinned CUL1 kernel/DT",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),

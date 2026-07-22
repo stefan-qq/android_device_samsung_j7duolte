@@ -67,6 +67,14 @@ SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
     done
 
     echo
+    echo '=== DIRECT ADBD FUNCTIONFS SYSCALL TRACE ==='
+    /sbin/cat /tmp/J720F_ADBD_USB_TRACE.txt 2>&1
+
+    echo
+    echo '=== NATIVE ADB TRACE ==='
+    /sbin/cat /tmp/J720F_ADBD_TRACE.txt 2>&1
+
+    echo
     echo '=== FUNCTIONFS ==='
     /sbin/ls -ld /dev/usb-ffs /dev/usb-ffs/adb 2>&1
     /sbin/ls -la /dev/usb-ffs/adb 2>&1
@@ -127,6 +135,7 @@ SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
 # Never mount or invoke TWRP here. Copy only if TWRP already mounted the card.
 if /sbin/grep -q ' /external_sd ' /proc/mounts 2>/dev/null; then
     /sbin/cp "$REPORT" "$SD_REPORT" 2>/dev/null
+    /sbin/sh /sbin/j720f_collect_direct_usb_trace.sh auto >> "$REPORT" 2>&1
     /sbin/sync
 fi
 

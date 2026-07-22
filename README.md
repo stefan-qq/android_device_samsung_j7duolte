@@ -1,34 +1,41 @@
 # Samsung Galaxy J7 Duo (SM-J720F) — TWRP 3.3 bring-up
 
-This tree keeps the proven Android 7.1 TWRP 3.3 UI/touch userspace together
-with the exact Android 10 CUL1 kernel and DT.
+This tree keeps the proven Android 7.1 TWRP 3.3 userspace together with the
+exact Samsung Android 10 CUL1 kernel and device tree used by the phone.
 
 ## Verified on hardware
 
-- UI, framebuffer, brightness and touch work.
-- FAT32 microSD mounts read-write and can carry runtime logs.
-- EFS and CPEFS are exposed only as raw backups.
-- The old generated-fstab and uevent errors are gone.
+- UI, framebuffer, brightness, terminal and FAT32 microSD work.
+- Touch is stable after a brief startup pause.
+- `Format Data` creates a valid ext4 USERDATA filesystem and `/data` mounts
+  read-write, but the enforcing recovery SELinux domain still cannot enumerate
+  or write the `system_data_file` directory. That policy issue is intentionally
+  kept separate from this USB experiment.
+- EFS and CPEFS are exposed only as raw backup partitions.
 
-## Current USB/policy fix
+## Direct FunctionFS diagnostic
 
-The boot-supplied runtime DT property overrides the recovery image command
-line and reports `androidboot.selinux=enforcing`. The builder therefore patches the recovery-only
-Android 7.1 init binary to start SELinux non-enforcing before any init actions.
-This allows the stock CUL1 ConfigFS/FunctionFS USB sequence to run. The build
-also verifies that the device policy is included in `sepolicy.recovery`.
+The preceding `su`-policy and `adbd`-domain builds both reached the same state:
+FunctionFS exposed only `ep0`, `sys.usb.ffs.ready` remained `0`, the ConfigFS
+UDC stayed unbound, and the host never enumerated the phone. This branch does
+not make another transport-policy guess.
 
-The TWRP fstab no longer advertises the incorrect legacy
-`encryptable=footer` flag. Existing stock Android 10 userdata may still require
-a format before it can be mounted by this old recovery userspace.
+The builder source-instruments the exact synced Android 7.1 adbd. The daemon
+writes each decisive FunctionFS operation and its return value/`errno` directly
+to `/tmp/J720F_ADBD_USB_TRACE.txt`, independently of host USB, `/data`, logd, or
+recovery-domain access to adbd's `/proc` entry. Native ADB tracing is redirected
+to `/tmp/J720F_ADBD_TRACE.txt`. After startup, the recovery automatically copies
+both traces and the surrounding gadget/kernel state to:
 
-MTP remains disabled until ADB is proven stable. Do not wipe or restore EFS or
-CPEFS while validating recovery bring-up.
+```text
+/external_sd/J720F_DIRECT_USB_TRACE/
+```
 
+A manual fallback is included:
 
-## USB architecture
+```sh
+sh /sbin/j720f_collect_direct_usb_trace.sh
+```
 
-The recovery keeps one coherent donor-era Android 7.1 userspace for init, TWRP,
-bionic, the property service and adbd. It reuses only the exact CUL1 stock
-kernel/DT and Samsung ConfigFS gadget parameters. The experimental Android 10
-adbd/linker/library bundle is intentionally not packaged.
+MTP remains disabled until ADB is proven. This is a diagnostic branch, not a
+community release. Do not wipe or restore EFS or CPEFS during bring-up.

@@ -1,4 +1,4 @@
-# SM-J720F recovery USB: native Android 7.1 FunctionFS adbd-domain transport.
+# SM-J720F recovery USB: native Android 7.1 FunctionFS direct-trace transport.
 #
 # Keep the exact stock kernel, DT, ConfigFS gadget shape and Samsung VID/PID,
 # but use the adbd built with the same donor-era init, bionic and property
@@ -11,9 +11,22 @@ on early-init
     setprop sys.usb.ffs.ready 0
     setprop j720f.usb.transport native-android71-ffs
     setprop j720f.usb.adbd_domain_only 1
+    setprop j720f.usb.direct_trace 1
+    setprop persist.adb.trace_mask all
     setprop j720f.usb.early_init_action 1
 
 on fs
+    # Pre-create fixed tmpfs trace targets before adbd starts. The source-built
+    # daemon appends direct syscall results to the first file and redirects its
+    # native ADB trace stream to the second. Neither path depends on /data.
+    write /tmp/J720F_ADBD_USB_TRACE.txt J720F_USB_DIAG_INIT_PRECREATED
+    chown root shell /tmp/J720F_ADBD_USB_TRACE.txt
+    chmod 0664 /tmp/J720F_ADBD_USB_TRACE.txt
+    write /tmp/J720F_ADBD_TRACE.txt J720F_ADBD_TRACE_INIT_PRECREATED
+    chown root shell /tmp/J720F_ADBD_TRACE.txt
+    chmod 0664 /tmp/J720F_ADBD_TRACE.txt
+    setprop j720f.usb.trace_files_precreated 1
+
     mount configfs none /sys/kernel/config
     mkdir /sys/kernel/config/usb_gadget/g1 0770 root root
     mkdir /sys/kernel/config/usb_gadget/g1/strings/0x409 0770 root root
@@ -54,6 +67,9 @@ on property:sys.usb.config=none && property:sys.usb.configfs=1
 # Start the native donor-era recovery adbd after FunctionFS is mounted.
 # It remains UID 0 in u:r:adbd:s0; there is no adbd -> su dyntransition.
 on property:sys.usb.config=adb && property:sys.usb.configfs=1
+    # Reassert immediately before process creation so adbd observes tracing even
+    # if a later property-load action replaced the early-init value.
+    setprop persist.adb.trace_mask all
     start adbd
     setprop j720f.usb.adbd_start_action 1
 
