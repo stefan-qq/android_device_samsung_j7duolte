@@ -6,9 +6,5 @@ allow adbd functionfs:dir r_dir_perms;
 allow adbd functionfs:file rw_file_perms;
 set_prop(adbd, ffs_prop)
 
-# Direct-trace diagnostic branch only. init pre-creates fixed files under
-# /tmp; these permissions also let the instrumented adbd recover if either
-# file needs to be recreated. Remove them with the instrumentation in the
-# final release branch.
-allow adbd tmpfs:dir rw_dir_perms;
-allow adbd tmpfs:file create_file_perms;
+# Direct-trace files use the dedicated j720f_adbd_trace_file type declared in
+# j720f_trace.te. Do not grant adbd generic write access to every tmpfs file.

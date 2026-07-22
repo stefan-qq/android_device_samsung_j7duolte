@@ -30,8 +30,15 @@ for FILE in \
     /tmp/J720F_ADBD_TRACE.txt \
     /tmp/J720F_RUNTIME_DIAGNOSTICS.txt \
     /tmp/recovery.log; do
-    if [ -f "$FILE" ]; then
-        /sbin/cp "$FILE" "$OUTDIR/$(/sbin/basename "$FILE")" 2>/dev/null
+    DEST="$OUTDIR/$(/sbin/basename "$FILE")"
+    if [ -e "$FILE" ]; then
+        if ! /sbin/cp "$FILE" "$DEST" 2>"$DEST.copy_error"; then
+            echo "copy_failed source=$FILE" >> "$OUTDIR/collection_summary.txt"
+        else
+            /sbin/rm -f "$DEST.copy_error"
+        fi
+    else
+        echo "missing source=$FILE" >> "$OUTDIR/collection_summary.txt"
     fi
 done
 
@@ -73,6 +80,16 @@ done
     echo -n 'native_trace_lines='
     /sbin/wc -l < /tmp/J720F_ADBD_TRACE.txt 2>/dev/null || true
 } > "$OUTDIR/trace_metadata.txt" 2>&1
+
+{
+    echo '=== DATA ACCESS AFTER POLICY FIX ==='
+    /sbin/grep ' /data ' /proc/mounts 2>&1
+    /sbin/ls -ldZ /data /data/media 2>&1
+    /sbin/ls -laZ /data 2>&1
+    /sbin/touch /data/.j720f_twrp_data_probe 2>&1
+    /sbin/ls -lZ /data/.j720f_twrp_data_probe 2>&1
+    /sbin/rm -f /data/.j720f_twrp_data_probe 2>&1
+} > "$OUTDIR/data_access.txt" 2>&1
 
 /sbin/sync
 

@@ -20,12 +20,14 @@ on fs
     # daemon appends direct syscall results to the first file and redirects its
     # native ADB trace stream to the second. Neither path depends on /data.
     write /tmp/J720F_ADBD_USB_TRACE.txt J720F_USB_DIAG_INIT_PRECREATED
+    restorecon /tmp/J720F_ADBD_USB_TRACE.txt
     chown root shell /tmp/J720F_ADBD_USB_TRACE.txt
     chmod 0664 /tmp/J720F_ADBD_USB_TRACE.txt
     write /tmp/J720F_ADBD_TRACE.txt J720F_ADBD_TRACE_INIT_PRECREATED
+    restorecon /tmp/J720F_ADBD_TRACE.txt
     chown root shell /tmp/J720F_ADBD_TRACE.txt
     chmod 0664 /tmp/J720F_ADBD_TRACE.txt
-    setprop j720f.usb.trace_files_precreated 1
+    setprop j720f.usb.trace_precreated 1
 
     mount configfs none /sys/kernel/config
     mkdir /sys/kernel/config/usb_gadget/g1 0770 root root

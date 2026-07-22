@@ -1,6 +1,14 @@
 # The Samsung stock kernel forces SELinux enforcing. Keep recovery functional
 # with explicit policy rather than permissive-domain declarations.
 
+# TWRP must manage a freshly formatted /data and its emulated-storage tree.
+# The builder removes the donor AOSP recovery-only neverallow and exempts
+# recovery from the system_data_file write assertion before policy compile.
+allow recovery system_data_file:dir create_dir_perms;
+allow recovery system_data_file:file create_file_perms;
+allow recovery media_rw_data_file:dir create_dir_perms;
+allow recovery media_rw_data_file:file create_file_perms;
+
 # Proven working removable-storage path.
 allow recovery vfat:dir create_dir_perms;
 allow recovery vfat:file create_file_perms;

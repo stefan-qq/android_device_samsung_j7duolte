@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the native direct-FunctionFS-trace TWRP 3.3 image for SM-J720F."""
+"""Audit the trace-readable, data-access TWRP 3.3 image for SM-J720F."""
 
 from __future__ import annotations
 
@@ -250,6 +250,20 @@ def main() -> int:
         if "/sbin/permissive.sh" in init_rc:
             errors.append("init.rc still invokes the obsolete late-permissive helper")
 
+        merged_file_contexts = read_text(root, "file_contexts")
+        require_contains(
+            errors,
+            merged_file_contexts,
+            "/tmp/J720F_ADBD_USB_TRACE\\.txt",
+            "merged recovery file_contexts",
+        )
+        require_contains(
+            errors,
+            merged_file_contexts,
+            "/tmp/J720F_ADBD_TRACE\\.txt",
+            "merged recovery file_contexts",
+        )
+
         properties = read_text(root, "default.prop")
         for line in (
             "ro.secure=0",
@@ -294,8 +308,10 @@ def main() -> int:
             "setprop j720f.usb.direct_trace 1",
             "setprop persist.adb.trace_mask all",
             "write /tmp/J720F_ADBD_USB_TRACE.txt J720F_USB_DIAG_INIT_PRECREATED",
+            "restorecon /tmp/J720F_ADBD_USB_TRACE.txt",
             "write /tmp/J720F_ADBD_TRACE.txt J720F_ADBD_TRACE_INIT_PRECREATED",
-            "setprop j720f.usb.trace_files_precreated 1",
+            "restorecon /tmp/J720F_ADBD_TRACE.txt",
+            "setprop j720f.usb.trace_precreated 1",
             "mount configfs none /sys/kernel/config",
             "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
             "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
@@ -366,6 +382,7 @@ def main() -> int:
             "J720F_RUNTIME_DIAGNOSTICS.txt",
             "collection_summary.txt",
             "trace_metadata.txt",
+            "data_access.txt",
         ):
             require_contains(errors, collector, line, "direct USB trace collector")
         for forbidden in ("mount -t", "ctl.stop", "ctl.start", "Format Data"):
@@ -448,10 +465,10 @@ def main() -> int:
     for rule in (
         "allow adbd functionfs:file rw_file_perms;",
         "set_prop(adbd, ffs_prop)",
-        "allow adbd tmpfs:dir rw_dir_perms;",
-        "allow adbd tmpfs:file create_file_perms;",
     ):
         require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
+    if "allow adbd tmpfs:" in adbd_policy:
+        errors.append("device adbd policy still grants generic tmpfs access")
     if "adb_device:chr_file" in adbd_policy:
         errors.append("device adbd policy still targets the rejected legacy transport")
 
@@ -466,6 +483,27 @@ def main() -> int:
         "set_prop(recovery, system_radio_prop)",
     ):
         require_contains(errors, policy, rule, "device recovery policy")
+
+    trace_policy = (args.tree / "sepolicy/j720f_trace.te").read_text(errors="ignore")
+    file_contexts = (args.tree / "sepolicy/file_contexts").read_text(errors="ignore")
+    for rule in (
+        "type j720f_adbd_trace_file, file_type;",
+        "allow adbd j720f_adbd_trace_file:file create_file_perms;",
+        "allow recovery j720f_adbd_trace_file:file r_file_perms;",
+    ):
+        require_contains(errors, trace_policy, rule, "shared trace-file policy")
+    for trace_path in (
+        "/tmp/J720F_ADBD_USB_TRACE\\.txt",
+        "/tmp/J720F_ADBD_TRACE\\.txt",
+    ):
+        require_contains(errors, file_contexts, trace_path, "trace file_contexts")
+    for rule in (
+        "allow recovery system_data_file:dir create_dir_perms;",
+        "allow recovery system_data_file:file create_file_perms;",
+        "allow recovery media_rw_data_file:dir create_dir_perms;",
+        "allow recovery media_rw_data_file:file create_file_perms;",
+    ):
+        require_contains(errors, recovery_policy, rule, "TWRP data-access policy")
 
     property_policy = (args.tree / "sepolicy/property.te").read_text(errors="ignore")
     property_contexts = (args.tree / "sepolicy/property_contexts").read_text(errors="ignore")
@@ -482,7 +520,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Android 7.1 TWRP 3.3 direct FunctionFS syscall/native-adbd trace build with pinned CUL1 kernel/DT",
+        "layout": "Android 7.1 TWRP 3.3 trace-readable data-access diagnostic with pinned CUL1 kernel/DT",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),

@@ -1,0 +1,9 @@
+# Fixed-label diagnostic files shared by init, adbd and TWRP recovery.
+# The previous direct-trace build pre-created these under /tmp as init_tmpfs,
+# which made them unreadable to recovery and unwritable by adbd on this kernel.
+type j720f_adbd_trace_file, file_type;
+
+allow init init_tmpfs:file relabelfrom;
+allow init j720f_adbd_trace_file:file { create_file_perms relabelto };
+allow adbd j720f_adbd_trace_file:file create_file_perms;
+allow recovery j720f_adbd_trace_file:file r_file_perms;

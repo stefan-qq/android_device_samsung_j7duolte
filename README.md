@@ -39,3 +39,10 @@ sh /sbin/j720f_collect_direct_usb_trace.sh
 
 MTP remains disabled until ADB is proven. This is a diagnostic branch, not a
 community release. Do not wipe or restore EFS or CPEFS during bring-up.
+
+## Trace-readable data-access diagnostic
+
+The `twrp-3.3-native-ffs-trace-readable-data` branch fixes the direct-trace
+file labels and grants recovery the targeted `system_data_file` and
+`media_rw_data_file` access needed after Format Data. It remains a diagnostic
+branch until USB, ADB, MTP, backup and restore are verified on hardware.

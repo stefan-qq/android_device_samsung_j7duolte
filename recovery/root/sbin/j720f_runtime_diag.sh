@@ -67,12 +67,21 @@ SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
     done
 
     echo
+    echo '=== DIRECT ADBD TRACE FILE LABELS ==='
+    /sbin/ls -lZ /tmp/J720F_ADBD_USB_TRACE.txt /tmp/J720F_ADBD_TRACE.txt 2>&1
+
+    echo
     echo '=== DIRECT ADBD FUNCTIONFS SYSCALL TRACE ==='
     /sbin/cat /tmp/J720F_ADBD_USB_TRACE.txt 2>&1
 
     echo
     echo '=== NATIVE ADB TRACE ==='
     /sbin/cat /tmp/J720F_ADBD_TRACE.txt 2>&1
+
+    echo
+    echo '=== DATA ACCESS ==='
+    /sbin/ls -ldZ /data /data/media 2>&1
+    /sbin/ls -laZ /data 2>&1
 
     echo
     echo '=== FUNCTIONFS ==='
