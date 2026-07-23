@@ -46,3 +46,14 @@ The `twrp-3.3-native-ffs-trace-readable-data` branch fixes the direct-trace
 file labels and grants recovery the targeted `system_data_file` and
 `media_rw_data_file` access needed after Format Data. It remains a diagnostic
 branch until USB, ADB, MTP, backup and restore are verified on hardware.
+
+## Forced FunctionFS entry diagnostic
+
+The `twrp-3.3-native-ffs-force-ffs-entry` branch follows the first readable
+adbd trace. That trace proved adbd entered its event loop and opened the default
+TCP transport on port 5555 without ever calling `usb_init()`. The branch starts
+adbd only after an explicit FunctionFS-mounted property is set, instruments the
+pre-USB gate in `daemon/main.cpp`, and forces this recovery-only adbd into the
+FunctionFS implementation. If the former one-shot gate was the blocker, USB can
+enumerate; otherwise the direct trace records the exact `ep0` or descriptor
+failure. `/data` access from the prior branch is retained.

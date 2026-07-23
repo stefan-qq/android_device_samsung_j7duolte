@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the trace-readable, data-access TWRP 3.3 image for SM-J720F."""
+"""Audit the forced-FunctionFS-entry TWRP 3.3 image for SM-J720F."""
 
 from __future__ import annotations
 
@@ -204,6 +204,8 @@ def main() -> int:
         for marker in (
             b"/tmp/J720F_ADBD_USB_TRACE.txt",
             b"J720F_USB_DIAG",
+            b"J720F_MAIN_USB_GATE",
+            b"J720F_MAIN_USB_DECISION",
             b"/tmp/J720F_ADBD_TRACE.txt",
         ):
             if marker not in adbd:
@@ -306,6 +308,7 @@ def main() -> int:
             "setprop j720f.usb.transport native-android71-ffs",
             "setprop j720f.usb.adbd_domain_only 1",
             "setprop j720f.usb.direct_trace 1",
+            "setprop j720f.usb.force_ffs_entry 1",
             "setprop persist.adb.trace_mask all",
             "write /tmp/J720F_ADBD_USB_TRACE.txt J720F_USB_DIAG_INIT_PRECREATED",
             "restorecon /tmp/J720F_ADBD_USB_TRACE.txt",
@@ -316,11 +319,13 @@ def main() -> int:
             "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
             "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
             "mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000",
+            "setprop j720f.usb.ffs_mounted 1",
             "service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh",
             "on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1",
             "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}",
             "setprop j720f.usb.udc_bind_action 1",
             "setprop sys.usb.config adb",
+            "on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1",
             "start adbd",
             "setprop j720f.usb.ffs_mount_action 1",
             "setprop j720f.usb.configfs_action 1",
@@ -351,6 +356,8 @@ def main() -> int:
             "DMESG USB/SELINUX",
             "NATIVE ANDROID 7.1 RECOVERY ADBD",
             "ADBD PROCESS / CONTEXT / FDS",
+            "ADBD MAIN USB GATE / DIRECT FUNCTIONFS TRACE",
+            "J720F_MAIN_USB_(GATE|DECISION)",
             "DIRECT ADBD FUNCTIONFS SYSCALL TRACE",
             "NATIVE ADB TRACE",
             "/tmp/J720F_ADBD_USB_TRACE.txt",
@@ -383,6 +390,8 @@ def main() -> int:
             "collection_summary.txt",
             "trace_metadata.txt",
             "data_access.txt",
+            "main_usb_gate_lines=",
+            "main_usb_decision_lines=",
         ):
             require_contains(errors, collector, line, "direct USB trace collector")
         for forbidden in ("mount -t", "ctl.stop", "ctl.start", "Format Data"):
@@ -520,7 +529,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Android 7.1 TWRP 3.3 trace-readable data-access diagnostic with pinned CUL1 kernel/DT",
+        "layout": "Android 7.1 TWRP 3.3 forced FunctionFS-entry diagnostic with pinned CUL1 kernel/DT",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),

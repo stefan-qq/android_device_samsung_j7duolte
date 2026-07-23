@@ -71,6 +71,10 @@ SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
     /sbin/ls -lZ /tmp/J720F_ADBD_USB_TRACE.txt /tmp/J720F_ADBD_TRACE.txt 2>&1
 
     echo
+    echo '=== ADBD MAIN USB GATE / DIRECT FUNCTIONFS TRACE ==='
+    /sbin/grep -E 'J720F_MAIN_USB_(GATE|DECISION)' /tmp/J720F_ADBD_TRACE.txt 2>&1
+
+    echo
     echo '=== DIRECT ADBD FUNCTIONFS SYSCALL TRACE ==='
     /sbin/cat /tmp/J720F_ADBD_USB_TRACE.txt 2>&1
 
