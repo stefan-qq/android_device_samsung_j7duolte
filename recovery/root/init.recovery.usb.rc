@@ -52,7 +52,11 @@ on fs
 
     mkdir /dev/usb-ffs 0775 shell shell
     mkdir /dev/usb-ffs/adb 0770 shell shell
-    mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000
+    # This recovery deliberately keeps adbd as UID/GID 0. FunctionFS applies
+    # its mount uid/gid to ep0 and the later bulk endpoints, so make root the
+    # endpoint owner instead of the stock shell owner. The previous shell-owned
+    # ep0 was mode 0600 and every adbd O_RDWR open failed with EACCES.
+    mount functionfs adb /dev/usb-ffs/adb uid=0,gid=0
     setprop j720f.usb.ffs_mounted 1
     setprop j720f.usb.ffs_mount_action 1
     setprop j720f.usb.configfs_action 1

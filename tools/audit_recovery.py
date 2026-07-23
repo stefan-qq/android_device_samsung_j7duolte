@@ -318,7 +318,7 @@ def main() -> int:
             "mount configfs none /sys/kernel/config",
             "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
             "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
-            "mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000",
+            "mount functionfs adb /dev/usb-ffs/adb uid=0,gid=0",
             "setprop j720f.usb.ffs_mounted 1",
             "service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh",
             "on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1",
@@ -331,6 +331,16 @@ def main() -> int:
             "setprop j720f.usb.configfs_action 1",
         ):
             require_contains(errors, usb, line, "native Android 7.1 FunctionFS ADB rc")
+        if "mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000" in usb:
+            errors.append("FunctionFS endpoints are still shell-owned while adbd runs as UID 0")
+        for endpoint in ("ep0", "ep1", "ep2"):
+            require_contains(
+                errors,
+                ueventd,
+                f"/dev/usb-ffs/adb/{endpoint}                                 0600 root root",
+                "root-owned FunctionFS endpoint permissions",
+            )
+
         for forbidden in (
             "mount configfs none /config",
             "functions/adb.0",
@@ -536,7 +546,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Android 7.1 TWRP 3.3 forced FunctionFS-entry diagnostic with pinned CUL1 kernel/DT",
+        "layout": "Android 7.1 TWRP 3.3 root-owned FunctionFS endpoint diagnostic with pinned CUL1 kernel/DT",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),

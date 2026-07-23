@@ -65,3 +65,12 @@ value even though recovery later displayed the property. The `j720f.` namespace
 is labelled `twrp_prop`, and adbd lacked read access to that property area. This
 revision adds read-only `get_prop(adbd, twrp_prop)` access and records the exact
 SELinux labels and metadata for every FunctionFS path component.
+
+## Root-owned FunctionFS endpoints
+
+The forced-entry trace reached the native FunctionFS open thread and proved the
+remaining failure was the first real operation: `open(ep0, O_RDWR)` returned
+`EACCES` on every retry. Runtime metadata showed that FunctionFS had created a
+mode-0600 `ep0` owned by `shell:shell`, while this recovery intentionally keeps
+adbd as UID/GID 0. This revision mounts FunctionFS with `uid=0,gid=0` and keeps
+the endpoint ownership rules aligned with the root adbd service.
