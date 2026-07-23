@@ -6,5 +6,12 @@ allow adbd functionfs:dir r_dir_perms;
 allow adbd functionfs:file rw_file_perms;
 set_prop(adbd, ffs_prop)
 
+# The forced-FunctionFS selector is published as j720f.usb.transport and is
+# labelled twrp_prop by property_contexts. Android property reads are MAC-
+# checked, so adbd must be able to read that property before its one-shot USB
+# decision. Without this, property_get() returns the empty default and adbd
+# silently falls back to TCP port 5555.
+get_prop(adbd, twrp_prop)
+
 # Direct-trace files use the dedicated j720f_adbd_trace_file type declared in
 # j720f_trace.te. Do not grant adbd generic write access to every tmpfs file.

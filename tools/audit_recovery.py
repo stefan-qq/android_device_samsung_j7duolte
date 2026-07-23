@@ -474,6 +474,7 @@ def main() -> int:
     for rule in (
         "allow adbd functionfs:file rw_file_perms;",
         "set_prop(adbd, ffs_prop)",
+        "get_prop(adbd, twrp_prop)",
     ):
         require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
     if "allow adbd tmpfs:" in adbd_policy:
@@ -519,6 +520,12 @@ def main() -> int:
     require_contains(errors, property_policy, "type twrp_prop, property_type;", "device property policy")
     for prefix in ("ro.twrp.", "twrp.", "recovery.perf.", "j720f."):
         require_contains(errors, property_contexts, prefix, "device property contexts")
+
+    runtime_diag = (args.tree / "recovery/root/sbin/j720f_runtime_diag.sh").read_text(errors="ignore")
+    collector = (args.tree / "recovery/root/sbin/j720f_collect_direct_usb_trace.sh").read_text(errors="ignore")
+    for script_name, script in (("runtime diagnostic", runtime_diag), ("trace collector", collector)):
+        require_contains(errors, script, "/sbin/ls -ldZ /dev /dev/usb-ffs", script_name)
+        require_contains(errors, script, "/dev/usb-ffs/adb/ep0", script_name)
 
     # Android 7.1 system/sepolicy/domain.te has an unconditional neverallow
     # that forbids domains from creating or writing rootfs-labelled files.

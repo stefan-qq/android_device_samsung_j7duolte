@@ -88,9 +88,10 @@ SD_REPORT=/external_sd/J720F_RUNTIME_DIAGNOSTICS.txt
     /sbin/ls -laZ /data 2>&1
 
     echo
-    echo '=== FUNCTIONFS ==='
-    /sbin/ls -ld /dev/usb-ffs /dev/usb-ffs/adb 2>&1
-    /sbin/ls -la /dev/usb-ffs/adb 2>&1
+    echo '=== FUNCTIONFS LABELS / METADATA ==='
+    /sbin/ls -ldZ /dev /dev/usb-ffs /dev/usb-ffs/adb /dev/usb-ffs/adb/ep0 2>&1
+    /sbin/ls -laZ /dev/usb-ffs/adb 2>&1
+    /sbin/stat /dev /dev/usb-ffs /dev/usb-ffs/adb /dev/usb-ffs/adb/ep0 2>&1
 
     echo
     echo '=== CONFIGFS ==='

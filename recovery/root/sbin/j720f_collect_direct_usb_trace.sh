@@ -47,7 +47,12 @@ done
 /sbin/dmesg > "$OUTDIR/dmesg.txt" 2>&1
 /sbin/getprop > "$OUTDIR/getprop.txt" 2>&1
 /sbin/cat /proc/mounts > "$OUTDIR/mounts.txt" 2>&1
-/sbin/ls -la /dev/usb-ffs/adb > "$OUTDIR/functionfs_endpoints.txt" 2>&1
+{
+    echo '=== FUNCTIONFS LABELS / METADATA ==='
+    /sbin/ls -ldZ /dev /dev/usb-ffs /dev/usb-ffs/adb /dev/usb-ffs/adb/ep0 2>&1
+    /sbin/ls -laZ /dev/usb-ffs/adb 2>&1
+    /sbin/stat /dev /dev/usb-ffs /dev/usb-ffs/adb /dev/usb-ffs/adb/ep0 2>&1
+} > "$OUTDIR/functionfs_endpoints.txt" 2>&1
 
 {
     echo '=== CONFIGFS GADGET ==='

@@ -7,10 +7,9 @@ exact Samsung Android 10 CUL1 kernel and device tree used by the phone.
 
 - UI, framebuffer, brightness, terminal and FAT32 microSD work.
 - Touch is stable after a brief startup pause.
-- `Format Data` creates a valid ext4 USERDATA filesystem and `/data` mounts
-  read-write, but the enforcing recovery SELinux domain still cannot enumerate
-  or write the `system_data_file` directory. That policy issue is intentionally
-  kept separate from this USB experiment.
+- `Format Data` creates a valid ext4 USERDATA filesystem. `/data`,
+  `/data/media`, internal storage and TWRP settings are now accessible under
+  enforcing SELinux.
 - EFS and CPEFS are exposed only as raw backup partitions.
 
 ## Direct FunctionFS diagnostic
@@ -57,3 +56,12 @@ pre-USB gate in `daemon/main.cpp`, and forces this recovery-only adbd into the
 FunctionFS implementation. If the former one-shot gate was the blocker, USB can
 enumerate; otherwise the direct trace records the exact `ep0` or descriptor
 failure. `/data` access from the prior branch is retained.
+
+## Forced-entry property visibility correction
+
+Hardware trace from the first forced-entry build showed that adbd still chose
+TCP fallback because `property_get("j720f.usb.transport")` returned an empty
+value even though recovery later displayed the property. The `j720f.` namespace
+is labelled `twrp_prop`, and adbd lacked read access to that property area. This
+revision adds read-only `get_prop(adbd, twrp_prop)` access and records the exact
+SELinux labels and metadata for every FunctionFS path component.
