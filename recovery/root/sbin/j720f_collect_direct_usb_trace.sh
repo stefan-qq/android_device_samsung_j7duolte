@@ -23,6 +23,8 @@ fi
     echo "ffs_ready=$(/sbin/getprop sys.usb.ffs.ready 2>&1)"
     echo "ffs_mounted=$(/sbin/getprop j720f.usb.ffs_mounted 2>&1)"
     echo "force_ffs_entry=$(/sbin/getprop j720f.usb.force_ffs_entry 2>&1)"
+    echo "pure_configfs=$(/sbin/getprop j720f.usb.pure_configfs 2>&1)"
+    echo "pure_configfs_bind_action=$(/sbin/getprop j720f.usb.pure_configfs_bind_action 2>&1)"
     echo "adbd_state=$(/sbin/getprop init.svc.adbd 2>&1)"
     echo "udc=$(/sbin/cat /sys/kernel/config/usb_gadget/g1/UDC 2>&1)"
 } > "$OUTDIR/collection_summary.txt" 2>&1

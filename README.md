@@ -74,3 +74,18 @@ remaining failure was the first real operation: `open(ep0, O_RDWR)` returned
 mode-0600 `ep0` owned by `shell:shell`, while this recovery intentionally keeps
 adbd as UID/GID 0. This revision mounts FunctionFS with `uid=0,gid=0` and keeps
 the endpoint ownership rules aligned with the root adbd service.
+
+## Pure ConfigFS ADB binding
+
+The root-owned endpoint build completed every adbd FunctionFS operation:
+`ep0`, descriptors, strings, `ep1`, `ep2`, transport registration and
+`sys.usb.ffs.ready=1`. The remaining kernel failure occurred only while binding
+the gadget: `Config c/1 of g1 needs at least one function`, followed by a UDC
+write returning `EINVAL`. The same action still mixed ConfigFS with Samsung's
+legacy `/sys/class/android_usb/android0` interface, including a missing
+`f_ffs/aliases` node.
+
+This revision removes every legacy android_usb write from the recovery USB
+state machine. It creates the `ffs.adb` configuration link only in the
+`sys.usb.ffs.ready=1` action and then binds `13600000.dwc3` using ConfigFS
+alone. MTP remains intentionally disabled until ADB enumeration is proven.
