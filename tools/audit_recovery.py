@@ -310,6 +310,7 @@ def main() -> int:
             "setprop j720f.usb.direct_trace 1",
             "setprop j720f.usb.force_ffs_entry 1",
             "setprop j720f.usb.pure_configfs 1",
+            "setprop j720f.usb.stock_link_order 1",
             "setprop persist.adb.trace_mask all",
             "write /tmp/J720F_ADBD_USB_TRACE.txt J720F_USB_DIAG_INIT_PRECREATED",
             "restorecon /tmp/J720F_ADBD_USB_TRACE.txt",
@@ -324,7 +325,7 @@ def main() -> int:
             "service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh",
             "on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1",
             "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}",
-            "setprop j720f.usb.pure_configfs_bind_action 1",
+            "setprop j720f.usb.configfs_bind 1",
             "setprop j720f.usb.udc_bind_action 1",
             "setprop sys.usb.config adb",
             "on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1",
@@ -341,15 +342,25 @@ def main() -> int:
             "&& property:sys.usb.configfs=1"
         )
         ready_index = usb.find(ready_trigger)
+        mount_index = usb.find("mount functionfs adb /dev/usb-ffs/adb uid=0,gid=0")
         link_line = (
             "symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb "
             "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb"
         )
         link_index = usb.find(link_line)
-        if ready_index < 0 or link_index < ready_index:
-            errors.append("ConfigFS ffs.adb link is not created in the ffs.ready bind action")
+        if min(link_index, mount_index, ready_index) < 0 or not (
+            link_index < mount_index < ready_index
+        ):
+            errors.append(
+                "ConfigFS ffs.adb link must be registered before the FunctionFS mount "
+                "and preserved until the ffs.ready bind action"
+            )
         if usb.count(link_line) != 1:
             errors.append("ConfigFS ffs.adb link must appear exactly once in the USB rc")
+        if "rm /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb" in usb:
+            errors.append("USB none action still removes the stock-order ffs.adb link")
+        if "j720f.usb.pure_configfs_bind_action" in usb:
+            errors.append("USB rc still uses an overlength Android 7 property name")
         for endpoint in ("ep0", "ep1", "ep2"):
             require_contains(
                 errors,
@@ -564,7 +575,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Android 7.1 TWRP 3.3 pure-ConfigFS ADB bind diagnostic with pinned CUL1 kernel/DT",
+        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB bind diagnostic with pinned CUL1 kernel/DT",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),

@@ -24,7 +24,8 @@ fi
     echo "ffs_mounted=$(/sbin/getprop j720f.usb.ffs_mounted 2>&1)"
     echo "force_ffs_entry=$(/sbin/getprop j720f.usb.force_ffs_entry 2>&1)"
     echo "pure_configfs=$(/sbin/getprop j720f.usb.pure_configfs 2>&1)"
-    echo "pure_configfs_bind_action=$(/sbin/getprop j720f.usb.pure_configfs_bind_action 2>&1)"
+    echo "stock_link_order=$(/sbin/getprop j720f.usb.stock_link_order 2>&1)"
+    echo "configfs_bind=$(/sbin/getprop j720f.usb.configfs_bind 2>&1)"
     echo "adbd_state=$(/sbin/getprop init.svc.adbd 2>&1)"
     echo "udc=$(/sbin/cat /sys/kernel/config/usb_gadget/g1/UDC 2>&1)"
 } > "$OUTDIR/collection_summary.txt" 2>&1
@@ -65,6 +66,9 @@ done
     echo
     echo '=== CONFIG C.1 ==='
     /sbin/ls -la /sys/kernel/config/usb_gadget/g1/configs/c.1 2>&1
+    echo
+    echo '=== FFS.ADB LINK ==='
+    /sbin/readlink /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb 2>&1
     echo
     for FILE in \
         /sys/kernel/config/usb_gadget/g1/UDC \

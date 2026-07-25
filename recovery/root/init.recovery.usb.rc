@@ -14,6 +14,7 @@ on early-init
     setprop j720f.usb.direct_trace 1
     setprop j720f.usb.force_ffs_entry 1
     setprop j720f.usb.pure_configfs 1
+    setprop j720f.usb.stock_link_order 1
     setprop persist.adb.trace_mask all
     setprop j720f.usb.early_init_action 1
 
@@ -49,6 +50,12 @@ on fs
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/MaxPower 0x3f
 
     mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
+    # Match the exact Samsung stock-recovery topology: register the ffs.adb
+    # function with c.1 before FunctionFS is mounted and before adbd opens ep0.
+    # The stock kernel rejected a link created only after ffs.ready with
+    # "Config c/1 of g1 needs at least one function" even though the late
+    # symlink remained visible in ConfigFS. Keep this link for the whole boot.
+    symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb
 
     mkdir /dev/usb-ffs 0775 shell shell
     mkdir /dev/usb-ffs/adb 0770 shell shell
@@ -68,7 +75,8 @@ on boot
 
 on property:sys.usb.config=none && property:sys.usb.configfs=1
     write /sys/kernel/config/usb_gadget/g1/UDC none
-    rm /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb
+    # Do not unlink ffs.adb here. Samsung stock recovery creates the link
+    # before mounting FunctionFS and preserves it across USB state changes.
     stop adbd
     setprop sys.usb.ffs.ready 0
     setprop sys.usb.state none
@@ -83,16 +91,15 @@ on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.
     setprop j720f.usb.adbd_start_action 1
 
 # adbd publishes ffs.ready only after it opens ep0 and writes descriptors.
-# Bind through ConfigFS only. The former mixed legacy android_usb writes left
-# the kernel configuration function list empty even though a stale-looking
-# ffs.adb link remained visible in ConfigFS.
+# The ffs.adb function was already linked into c.1 during the fs action, in
+# the same order used by the exact Samsung Android 10 stock recovery. Bind the
+# already-complete ConfigFS gadget only after FunctionFS is ready.
 on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
     write /sys/kernel/config/usb_gadget/g1/idVendor 0x04E8
     write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration adb
-    symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb
     write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
-    setprop j720f.usb.pure_configfs_bind_action 1
+    setprop j720f.usb.configfs_bind 1
     setprop j720f.usb.udc_bind_action 1
     setprop sys.usb.state adb
 

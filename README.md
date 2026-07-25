@@ -75,17 +75,17 @@ mode-0600 `ep0` owned by `shell:shell`, while this recovery intentionally keeps
 adbd as UID/GID 0. This revision mounts FunctionFS with `uid=0,gid=0` and keeps
 the endpoint ownership rules aligned with the root adbd service.
 
-## Pure ConfigFS ADB binding
+## Stock-order ConfigFS ADB binding
 
 The root-owned endpoint build completed every adbd FunctionFS operation:
 `ep0`, descriptors, strings, `ep1`, `ep2`, transport registration and
-`sys.usb.ffs.ready=1`. The remaining kernel failure occurred only while binding
-the gadget: `Config c/1 of g1 needs at least one function`, followed by a UDC
-write returning `EINVAL`. The same action still mixed ConfigFS with Samsung's
-legacy `/sys/class/android_usb/android0` interface, including a missing
-`f_ffs/aliases` node.
+`sys.usb.ffs.ready=1`. A later pure-ConfigFS test still failed UDC binding with
+`Config c/1 of g1 needs at least one function`, even though the link created in
+the ready action remained visible at `configs/c.1/ffs.adb`.
 
-This revision removes every legacy android_usb write from the recovery USB
-state machine. It creates the `ffs.adb` configuration link only in the
-`sys.usb.ffs.ready=1` action and then binds `13600000.dwc3` using ConfigFS
-alone. MTP remains intentionally disabled until ADB enumeration is proven.
+The exact CUL1 Samsung recovery registers `functions/ffs.adb` with
+`configs/c.1` before it mounts FunctionFS. This revision follows that kernel-
+specific order: create and preserve the configuration link during `fs`, then
+mount FunctionFS, start the root adbd, and bind `13600000.dwc3` only after
+`sys.usb.ffs.ready=1`. The `none` action no longer removes the link. MTP remains
+intentionally disabled until ADB enumeration is proven.
