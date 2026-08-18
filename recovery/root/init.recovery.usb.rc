@@ -13,7 +13,8 @@ on early-init
     setprop j720f.usb.adbd_domain_only 1
     setprop j720f.usb.direct_trace 1
     setprop j720f.usb.force_ffs_entry 1
-    setprop j720f.usb.pure_configfs 1
+    setprop j720f.usb.pure_configfs 0
+    setprop j720f.usb.stock_android_usb_gate 1
     setprop j720f.usb.stock_link_order 1
     setprop persist.adb.trace_mask all
     setprop j720f.usb.early_init_action 1
@@ -95,10 +96,19 @@ on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.
 # the same order used by the exact Samsung Android 10 stock recovery. Bind the
 # already-complete ConfigFS gadget only after FunctionFS is ready.
 on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+    # The CUL1 Samsung 4.4 kernel uses the legacy android_usb sysfs gate around
+    # its ConfigFS UDC attach. PID 1 reaches g1/UDC successfully without this
+    # sequence, but the ConfigFS UDC attach returns -EINVAL. Reproduce only the
+    # four stock-recovery gate writes while keeping our proven ConfigFS/FFS
+    # topology and native recovery adbd unchanged.
+    write /sys/class/android_usb/android0/enable 0
     write /sys/kernel/config/usb_gadget/g1/idVendor 0x04E8
     write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
+    write /sys/class/android_usb/android0/f_ffs/aliases adb
+    write /sys/class/android_usb/android0/functions adb
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration adb
     write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
+    write /sys/class/android_usb/android0/enable 1
     setprop j720f.usb.configfs_bind 1
     setprop j720f.usb.udc_bind_action 1
     setprop sys.usb.state adb
