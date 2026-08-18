@@ -309,7 +309,8 @@ def main() -> int:
             "setprop j720f.usb.adbd_domain_only 1",
             "setprop j720f.usb.direct_trace 1",
             "setprop j720f.usb.force_ffs_entry 1",
-            "setprop j720f.usb.pure_configfs 1",
+            "setprop j720f.usb.pure_configfs 0",
+            "setprop j720f.usb.stock_android_usb_gate 1",
             "setprop j720f.usb.stock_link_order 1",
             "setprop persist.adb.trace_mask all",
             "write /tmp/J720F_ADBD_USB_TRACE.txt J720F_USB_DIAG_INIT_PRECREATED",
@@ -369,12 +370,35 @@ def main() -> int:
                 "root-owned FunctionFS endpoint permissions",
             )
 
+        stock_gate = [
+            "write /sys/class/android_usb/android0/enable 0",
+            "write /sys/class/android_usb/android0/f_ffs/aliases adb",
+            "write /sys/class/android_usb/android0/functions adb",
+            "write /sys/class/android_usb/android0/enable 1",
+        ]
+        android_usb_lines = [
+            line.strip() for line in usb.splitlines()
+            if "/sys/class/android_usb/android0/" in line
+        ]
+        if android_usb_lines != stock_gate:
+            errors.append(
+                "native FunctionFS rc must contain exactly the four CUL1 stock "
+                f"android_usb gate writes; found: {android_usb_lines}"
+            )
+
+        udc_bind = "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}"
+        ordered = [ready_trigger] + stock_gate[:3] + [udc_bind, stock_gate[3]]
+        indices = [usb.find(item) for item in ordered]
+        if min(indices) < 0 or indices != sorted(indices) or len(set(indices)) != len(indices):
+            errors.append(
+                "CUL1 android_usb gate must wrap the ConfigFS UDC bind in stock order"
+            )
+
         for forbidden in (
             "mount configfs none /config",
             "functions/adb.0",
             "configs/c.1/adb.0",
             "/dev/android_adb",
-            "/sys/class/android_usb/android0/",
         ):
             if forbidden in usb:
                 errors.append(f"native FunctionFS rc contains rejected legacy ADB path: {forbidden}")
