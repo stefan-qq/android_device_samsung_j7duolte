@@ -15,3 +15,15 @@ get_prop(adbd, twrp_prop)
 
 # Direct-trace files use the dedicated j720f_adbd_trace_file type declared in
 # j720f_trace.te. Do not grant adbd generic write access to every tmpfs file.
+
+# /sbin/sh is rootfs-labelled in recovery. The pinned Android 7.1 adbd now
+# switches only its forked shell child to u:r:shell:s0 before exec, matching the
+# recovery-specific handoff used by newer AOSP adbd. Keep the parent daemon in
+# u:r:adbd:s0 so the proven FunctionFS transport and sync service are unchanged.
+allow adbd self:process setcurrent;
+domain_trans(adbd, rootfs, shell)
+allow adbd shell:process dyntransition;
+
+# The shell child inherits the adbd-created transport/socket FDs across setcon.
+allow shell adbd:fd use;
+allow shell adbd:unix_stream_socket { read write ioctl getattr };

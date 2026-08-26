@@ -206,6 +206,7 @@ def main() -> int:
             b"J720F_USB_DIAG",
             b"J720F_MAIN_USB_GATE",
             b"J720F_MAIN_USB_DECISION",
+            b"J720F_RECOVERY_SHELL_SELCON",
             b"/tmp/J720F_ADBD_TRACE.txt",
         ):
             if marker not in adbd:
@@ -538,6 +539,11 @@ def main() -> int:
         "allow adbd functionfs:file rw_file_perms;",
         "set_prop(adbd, ffs_prop)",
         "get_prop(adbd, twrp_prop)",
+        "allow adbd self:process setcurrent;",
+        "domain_trans(adbd, rootfs, shell)",
+        "allow adbd shell:process dyntransition;",
+        "allow shell adbd:fd use;",
+        "allow shell adbd:unix_stream_socket { read write ioctl getattr };",
     ):
         require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
     if "allow adbd tmpfs:" in adbd_policy:
