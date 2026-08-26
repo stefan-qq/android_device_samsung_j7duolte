@@ -47,7 +47,9 @@ on fs
     write /sys/kernel/config/usb_gadget/g1/strings/0x409/serialnumber ${ro.serialno}
     write /sys/kernel/config/usb_gadget/g1/strings/0x409/manufacturer SAMSUNG
     write /sys/kernel/config/usb_gadget/g1/strings/0x409/product SAMSUNG_Android
-    write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration adb
+    # Keep the exact CUL1 configuration string. Samsung CONFIG_USB_CONFIGFS_UEVENT
+    # treats other strings (notably "adb") as a GSI path during the config symlink.
+    write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration "Conf 1"
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/MaxPower 0x3f
 
     mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
@@ -106,7 +108,6 @@ on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.u
     write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
     write /sys/class/android_usb/android0/f_ffs/aliases adb
     write /sys/class/android_usb/android0/functions adb
-    write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration adb
     write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
     write /sys/class/android_usb/android0/enable 1
     setprop j720f.usb.configfs_bind 1
