@@ -542,6 +542,7 @@ def main() -> int:
         "allow adbd self:process setcurrent;",
         "domain_trans(adbd, rootfs, shell)",
         "allow adbd shell:process dyntransition;",
+        "allow adbd shell:process noatsecure;",
         "allow shell rootfs:file rx_file_perms;",
         "allow shell adbd:fd use;",
         "allow shell adbd:unix_stream_socket { read write ioctl getattr };",

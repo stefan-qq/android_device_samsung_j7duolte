@@ -23,6 +23,11 @@ get_prop(adbd, twrp_prop)
 allow adbd self:process setcurrent;
 domain_trans(adbd, rootfs, shell)
 allow adbd shell:process dyntransition;
+# Keep the inherited recovery LD_LIBRARY_PATH visible to bionic after the
+# adbd -> shell SELinux handoff. Without noatsecure, the linker treats the
+# subprocess as AT_SECURE and ignores /sbin, so even the present libc.so is
+# reported as not found. This matches AOSP recovery adbd policy.
+allow adbd shell:process noatsecure;
 
 # After the explicit setcon(), the child is already in u:r:shell:s0 when it
 # execs /sbin/sh -> /sbin/busybox. Android 7.1 shell policy can read rootfs
