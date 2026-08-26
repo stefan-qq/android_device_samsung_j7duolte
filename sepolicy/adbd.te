@@ -24,6 +24,12 @@ allow adbd self:process setcurrent;
 domain_trans(adbd, rootfs, shell)
 allow adbd shell:process dyntransition;
 
+# After the explicit setcon(), the child is already in u:r:shell:s0 when it
+# execs /sbin/sh -> /sbin/busybox. Android 7.1 shell policy can read rootfs
+# directories but lacks the recovery-only rootfs execute permission added by
+# newer AOSP. Grant only read/execute on rootfs-labelled files.
+allow shell rootfs:file rx_file_perms;
+
 # The shell child inherits the adbd-created transport/socket FDs across setcon.
 allow shell adbd:fd use;
 allow shell adbd:unix_stream_socket { read write ioctl getattr };
