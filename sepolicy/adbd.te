@@ -16,25 +16,15 @@ get_prop(adbd, twrp_prop)
 # Direct-trace files use the dedicated j720f_adbd_trace_file type declared in
 # j720f_trace.te. Do not grant adbd generic write access to every tmpfs file.
 
-# /sbin/sh is rootfs-labelled in recovery. The pinned Android 7.1 adbd now
-# switches only its forked shell child to u:r:shell:s0 before exec, matching the
-# recovery-specific handoff used by newer AOSP adbd. Keep the parent daemon in
-# u:r:adbd:s0 so the proven FunctionFS transport and sync service are unchanged.
+# Keep the parent adbd in u:r:adbd:s0. Only the forked adb command child is
+# moved to u:r:recovery:s0 before exec. On the Samsung CUL1 kernel a child in
+# u:r:shell:s0 is presented to the ELF interpreter as UID/GID 2000 even when it
+# was UID/GID 0 immediately before exec; TWRP's root-owned 0750 /sbin then
+# becomes unreadable. The recovery domain is already the proven root execution
+# domain used by TWRP Terminal, so use it for the recovery-only adb child.
 allow adbd self:process setcurrent;
-domain_trans(adbd, rootfs, shell)
-allow adbd shell:process dyntransition;
-# Keep the inherited recovery LD_LIBRARY_PATH visible to bionic after the
-# adbd -> shell SELinux handoff. Without noatsecure, the linker treats the
-# subprocess as AT_SECURE and ignores /sbin, so even the present libc.so is
-# reported as not found. This matches AOSP recovery adbd policy.
-allow adbd shell:process noatsecure;
+allow adbd recovery:process { dyntransition signal };
 
-# After the explicit setcon(), the child is already in u:r:shell:s0 when it
-# execs /sbin/sh -> /sbin/busybox. Android 7.1 shell policy can read rootfs
-# directories but lacks the recovery-only rootfs execute permission added by
-# newer AOSP. Grant only read/execute on rootfs-labelled files.
-allow shell rootfs:file rx_file_perms;
-
-# The shell child inherits the adbd-created transport/socket FDs across setcon.
-allow shell adbd:fd use;
-allow shell adbd:unix_stream_socket { read write ioctl getattr };
+# The recovery-domain child inherits the adbd-created transport/socket FDs.
+allow recovery adbd:fd use;
+allow recovery adbd:unix_stream_socket { read write ioctl getattr };

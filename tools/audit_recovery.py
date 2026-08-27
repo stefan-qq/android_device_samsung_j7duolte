@@ -540,6 +540,12 @@ def main() -> int:
         "set_prop(adbd, ffs_prop)",
         "get_prop(adbd, twrp_prop)",
         "allow adbd self:process setcurrent;",
+        "allow adbd recovery:process { dyntransition signal };",
+        "allow recovery adbd:fd use;",
+        "allow recovery adbd:unix_stream_socket { read write ioctl getattr };",
+    ):
+        require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
+    for stale_rule in (
         "domain_trans(adbd, rootfs, shell)",
         "allow adbd shell:process dyntransition;",
         "allow adbd shell:process noatsecure;",
@@ -547,7 +553,8 @@ def main() -> int:
         "allow shell adbd:fd use;",
         "allow shell adbd:unix_stream_socket { read write ioctl getattr };",
     ):
-        require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
+        if stale_rule in adbd_policy:
+            errors.append(f"device adbd policy retains superseded shell handoff: {stale_rule}")
     if "allow adbd tmpfs:" in adbd_policy:
         errors.append("device adbd policy still grants generic tmpfs access")
     if "adb_device:chr_file" in adbd_policy:
