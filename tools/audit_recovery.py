@@ -206,7 +206,7 @@ def main() -> int:
             b"J720F_USB_DIAG",
             b"J720F_MAIN_USB_GATE",
             b"J720F_MAIN_USB_DECISION",
-            b"J720F_RECOVERY_SHELL_SELCON",
+            b"J720F_STOCK_ROOT_SECLABEL_CHILD",
             b"/tmp/J720F_ADBD_TRACE.txt",
         ):
             if marker not in adbd:
@@ -241,15 +241,15 @@ def main() -> int:
         require_contains(
             errors,
             init_rc,
-            "service adbd /sbin/adbd --device_banner=recovery",
-            "native Android 7.1 adbd service",
+            "service adbd /sbin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery",
+            "stock-style native Android 7.1 root adbd service",
         )
-        if re.search(
-            r"(?m)^[ \t]*service[ \t]+adbd[ \t]+[^\n#]*"
-            r"--root_seclabel(?:=|[ \t]|$)",
+        root_label_services = re.findall(
+            r"(?m)^[ \t]*service[ \t]+adbd[ \t]+[^\n#]*--root_seclabel=[^ \t\n]+",
             init_rc,
-        ):
-            errors.append("init.rc still forces the disproven adbd -> su transition")
+        )
+        if len(root_label_services) != 1 or "--root_seclabel=u:r:su:s0" not in root_label_services[0]:
+            errors.append("init.rc does not use exactly the stock u:r:su:s0 root adbd label")
         if "/sbin/permissive.sh" in init_rc:
             errors.append("init.rc still invokes the obsolete late-permissive helper")
 
@@ -514,7 +514,7 @@ def main() -> int:
     adbd_policy = (args.tree / "sepolicy/adbd.te").read_text(errors="ignore")
     su_policy_path = args.tree / "sepolicy/su.te"
     if su_policy_path.exists():
-        errors.append("device policy still carries the disproven custom su-domain USB rules")
+        errors.append("device policy must not override the platform recovery su domain")
     all_device_policy = "\n".join((init_policy, recovery_policy, adbd_policy))
     for domain in ("init", "recovery"):
         if f"permissive {domain};" in all_device_policy:
@@ -540,12 +540,13 @@ def main() -> int:
         "set_prop(adbd, ffs_prop)",
         "get_prop(adbd, twrp_prop)",
         "allow adbd self:process setcurrent;",
-        "allow adbd recovery:process { dyntransition signal };",
-        "allow recovery adbd:fd use;",
-        "allow recovery adbd:unix_stream_socket { read write ioctl getattr };",
+        "allow adbd su:process dyntransition;",
     ):
         require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
     for stale_rule in (
+        "allow adbd recovery:process",
+        "allow recovery adbd:fd use;",
+        "allow recovery adbd:unix_stream_socket",
         "domain_trans(adbd, rootfs, shell)",
         "allow adbd shell:process dyntransition;",
         "allow adbd shell:process noatsecure;",
@@ -554,7 +555,7 @@ def main() -> int:
         "allow shell adbd:unix_stream_socket { read write ioctl getattr };",
     ):
         if stale_rule in adbd_policy:
-            errors.append(f"device adbd policy retains superseded shell handoff: {stale_rule}")
+            errors.append(f"device adbd policy retains superseded command-child handoff: {stale_rule}")
     if "allow adbd tmpfs:" in adbd_policy:
         errors.append("device adbd policy still grants generic tmpfs access")
     if "adb_device:chr_file" in adbd_policy:

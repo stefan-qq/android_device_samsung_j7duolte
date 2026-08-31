@@ -16,15 +16,10 @@ get_prop(adbd, twrp_prop)
 # Direct-trace files use the dedicated j720f_adbd_trace_file type declared in
 # j720f_trace.te. Do not grant adbd generic write access to every tmpfs file.
 
-# Keep the parent adbd in u:r:adbd:s0. Only the forked adb command child is
-# moved to u:r:recovery:s0 before exec. On the Samsung CUL1 kernel a child in
-# u:r:shell:s0 is presented to the ELF interpreter as UID/GID 2000 even when it
-# was UID/GID 0 immediately before exec; TWRP's root-owned 0750 /sbin then
-# becomes unreadable. The recovery domain is already the proven root execution
-# domain used by TWRP Terminal, so use it for the recovery-only adb child.
+# Match CUL1 stock/AOSP recovery root-adbd architecture. init starts adbd in
+# u:r:adbd:s0; donor adbd then uses --root_seclabel=u:r:su:s0 after confirming
+# it remains UID 0. The platform eng recovery policy already defines su as the
+# permissive adb-root domain and grants adbd -> su dyntransition. setcurrent is
+# retained here explicitly because donor adbd performs the setcon() itself.
 allow adbd self:process setcurrent;
-allow adbd recovery:process { dyntransition signal };
-
-# The recovery-domain child inherits the adbd-created transport/socket FDs.
-allow recovery adbd:fd use;
-allow recovery adbd:unix_stream_socket { read write ioctl getattr };
+allow adbd su:process dyntransition;

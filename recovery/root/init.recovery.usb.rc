@@ -85,7 +85,8 @@ on property:sys.usb.config=none && property:sys.usb.configfs=1
     setprop sys.usb.state none
 
 # Start the native donor-era recovery adbd after FunctionFS is mounted.
-# It remains UID 0 in u:r:adbd:s0; there is no adbd -> su dyntransition.
+# It remains UID 0 and then follows stock recovery's --root_seclabel handoff
+# from u:r:adbd:s0 to the platform u:r:su:s0 root-adbd domain.
 on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1
     # Reassert immediately before process creation so adbd observes tracing even
     # if a later property-load action replaced the early-init value.

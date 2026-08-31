@@ -96,14 +96,14 @@ service ueventd /sbin/ueventd
     critical
     seclabel u:r:ueventd:s0
 
-service adbd /sbin/adbd --device_banner=recovery
+service adbd /sbin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery
     disabled
     socket adbd stream 660 system system
     seclabel u:r:adbd:s0
 
 # Keep the USB daemon in the same Android 7.1 recovery userspace as init,
-# TWRP, bionic and the property service. ro.secure=0 keeps UID 0, while omitting
-# Omitting the optional root SELinux label avoids the failing adbd -> su
-# dyntransition. The
-# device USB rc owns the complete FunctionFS lifecycle so adbd cannot start
-# before /dev/usb-ffs/adb is mounted.
+# TWRP, bionic and the property service. ro.secure=0 keeps UID 0. Match CUL1
+# stock/AOSP recovery by moving root adbd itself to u:r:su:s0 with
+# --root_seclabel; the platform eng policy provides that permissive root domain.
+# The device USB rc still owns the complete FunctionFS lifecycle so adbd cannot
+# start before /dev/usb-ffs/adb is mounted.
