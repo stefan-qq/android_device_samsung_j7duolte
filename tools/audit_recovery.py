@@ -206,7 +206,8 @@ def main() -> int:
             b"J720F_USB_DIAG",
             b"J720F_MAIN_USB_GATE",
             b"J720F_MAIN_USB_DECISION",
-            b"J720F_STOCK_ROOT_SECLABEL_CHILD",
+            b"J720F_SHELL_CHILD phase=inherited_root_seclabel",
+            b"J720F_SHELL_CHILD phase=pre_exec",
             b"/tmp/J720F_ADBD_TRACE.txt",
         ):
             if marker not in adbd:
