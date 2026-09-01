@@ -85,8 +85,8 @@ on property:sys.usb.config=none && property:sys.usb.configfs=1
     setprop sys.usb.state none
 
 # Start the native donor-era recovery adbd after FunctionFS is mounted.
-# The parent remains UID 0 in u:r:adbd:s0 for the proven FunctionFS/USB path.
-# Only forked adb command children switch to the platform u:r:su:s0 root domain.
+# Parent and command children remain UID/GID 0 in u:r:adbd:s0. Command children
+# execute the ramdisk /sbin/sh without a SELinux domain transition.
 on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1
     # Reassert immediately before process creation so adbd observes tracing even
     # if a later property-load action replaced the early-init value.

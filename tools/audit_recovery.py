@@ -169,6 +169,8 @@ def main() -> int:
             "sepolicy",
             "sbin/recovery",
             "sbin/adbd",
+            "sbin/busybox",
+            "sbin/sh",
             "sbin/libminuitwrp.so",
             "sbin/j720f_runtime_diag.sh",
             "sbin/j720f_collect_direct_usb_trace.sh",
@@ -200,15 +202,24 @@ def main() -> int:
         if b"/sbin/orsin" in recovery or b"/sbin/orsout" in recovery:
             errors.append("/sbin/recovery still embeds read-only /sbin ORS FIFO paths")
 
+        shell_path = root / "sbin/sh"
+        if not shell_path.is_symlink():
+            errors.append("/sbin/sh is not the expected BusyBox symlink")
+        elif os.readlink(shell_path) != "busybox":
+            errors.append(f"/sbin/sh points to {os.readlink(shell_path)!r}; expected 'busybox'")
+        busybox_path = root / "sbin/busybox"
+        if busybox_path.is_file() and not os.access(busybox_path, os.X_OK):
+            errors.append("/sbin/busybox is not executable")
+
         adbd = (root / "sbin/adbd").read_bytes() if (root / "sbin/adbd").is_file() else b""
         for marker in (
             b"/tmp/J720F_ADBD_USB_TRACE.txt",
             b"J720F_USB_DIAG",
             b"J720F_MAIN_USB_GATE",
             b"J720F_MAIN_USB_DECISION",
-            b"J720F_SHELL_CHILD phase=pre_setcon_su",
-            b"J720F_SHELL_CHILD phase=post_setcon_su",
-            b"J720F_SHELL_CHILD phase=pre_exec",
+            b"J720F_SHELL_CHILD phase=adbd_root_pre_exec",
+            b"J720F root adb child lost UID 0 before exec",
+            b"J720F /sbin/sh is not executable in adbd domain",
             b"/tmp/J720F_ADBD_TRACE.txt",
         ):
             if marker not in adbd:
@@ -537,13 +548,14 @@ def main() -> int:
         "allow adbd functionfs:file rw_file_perms;",
         "set_prop(adbd, ffs_prop)",
         "get_prop(adbd, twrp_prop)",
-        "allow adbd self:process setcurrent;",
-        "allow adbd su:process dyntransition;",
-        "allow su adbd:fd use;",
-        "allow su adbd:unix_stream_socket { read write ioctl getattr };",
+        "allow adbd rootfs:file rx_file_perms;",
     ):
         require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
     for stale_rule in (
+        "allow adbd self:process setcurrent;",
+        "allow adbd su:process dyntransition;",
+        "allow su adbd:fd use;",
+        "allow su adbd:unix_stream_socket",
         "allow adbd recovery:process",
         "allow recovery adbd:fd use;",
         "allow recovery adbd:unix_stream_socket",

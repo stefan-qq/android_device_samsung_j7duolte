@@ -16,12 +16,8 @@ get_prop(adbd, twrp_prop)
 # Direct-trace files use the dedicated j720f_adbd_trace_file type declared in
 # j720f_trace.te. Do not grant adbd generic write access to every tmpfs file.
 
-# Keep the parent USB daemon in the proven u:r:adbd:s0 domain. Only a forked
-# command child performs setcon(u:r:su:s0) immediately before executing the
-# recovery shell. The platform eng recovery policy defines su as the permissive
-# adb-root domain; grant the explicit dyntransition plus access to the inherited
-# adbd command-channel descriptors.
-allow adbd self:process setcurrent;
-allow adbd su:process dyntransition;
-allow su adbd:fd use;
-allow su adbd:unix_stream_socket { read write ioctl getattr };
+# Keep both the proven USB daemon and its forked root command child in
+# u:r:adbd:s0. The J720F ramdisk shell, linker and libraries are rootfs-labelled.
+# rx_file_perms includes execute_no_trans, so /sbin/sh executes without the
+# shell/recovery/su domain transitions that regressed credentials on hardware.
+allow adbd rootfs:file rx_file_perms;

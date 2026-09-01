@@ -101,9 +101,9 @@ service adbd /sbin/adbd --device_banner=recovery
     socket adbd stream 660 system system
     seclabel u:r:adbd:s0
 
-# Keep the USB daemon itself in u:r:adbd:s0. This is the proven domain for
-# FunctionFS initialization and sys.usb.ffs.ready publication on this recovery.
-# The source-built adbd moves only a forked command child to u:r:su:s0 before
-# exec, leaving the parent USB transport unchanged. ro.secure=0 keeps UID 0.
-# The device USB rc still owns the complete FunctionFS lifecycle so adbd cannot
-# start before /dev/usb-ffs/adb is mounted.
+# Keep the USB daemon and its forked command children in u:r:adbd:s0. This is
+# the proven domain for FunctionFS initialization and sys.usb.ffs.ready on this
+# recovery, and it avoids the disproven shell/recovery/su exec-time handoffs.
+# ro.secure=0 keeps UID/GID 0. The source-built adbd executes /sbin/sh directly
+# with rootfs execute_no_trans permission; the device USB rc still owns the
+# complete FunctionFS lifecycle so adbd cannot start before FunctionFS exists.
