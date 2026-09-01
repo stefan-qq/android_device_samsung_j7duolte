@@ -594,6 +594,8 @@ def main() -> int:
         "allow adbd rootfs:file rx_file_perms;",
         "allow adbd self:process setcurrent;",
         "allow adbd recovery:process dyntransition;",
+        "allow recovery adbd:process sigchld;",
+        "allow adbd recovery:process signal;",
         "allow recovery adbd:fd use;",
         "allow recovery adbd:unix_stream_socket { read write ioctl getattr };",
     ):

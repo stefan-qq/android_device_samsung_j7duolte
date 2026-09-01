@@ -31,5 +31,11 @@ allow adbd rootfs:file rx_file_perms;
 # must retain access to the stdio/error descriptors created by adbd.
 allow adbd self:process setcurrent;
 allow adbd recovery:process dyntransition;
+
+# Complete the cross-domain parent/child lifecycle. waitpid() is SELinux-
+# checked as SIGCHLD from the recovery child back to its adbd parent, while
+# adbd sends SIGHUP when the host-side shell disconnects.
+allow recovery adbd:process sigchld;
+allow adbd recovery:process signal;
 allow recovery adbd:fd use;
 allow recovery adbd:unix_stream_socket { read write ioctl getattr };
