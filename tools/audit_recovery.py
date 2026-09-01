@@ -19,10 +19,20 @@ import tempfile
 LIMIT = 39_845_888
 PAGE = 2048
 STOCK_KERNEL_SHA256 = "f91660e294f4532d266d23f386f99f4e9c290859154236d82e5280af9f11d268"
-EXPECTED_KERNEL_SHA256 = "03e4c4e2dbe3fe32051e71e295d1bb8901fca5565ff3b58f81272a1a498b4d18"
-DEFEX_EXECVE_OFFSET = 0x154524
-DEFEX_EXECVE_OLD = bytes.fromhex("821B8012")
-DEFEX_EXECVE_NEW = bytes.fromhex("E2FF8F12")
+EXPECTED_KERNEL_SHA256 = "d33cf9471a60e8a3235a656bd949b18b1d0805945cc3072f463274bfe23f8a93"
+
+# Proven Samsung /sbin/adbd exec credential rewrite.
+ADB_EXEC_CRED_OFFSET = 0x154D18
+ADB_EXEC_CRED_STOCK = bytes.fromhex("02FA8052")
+ADB_EXEC_CRED_PATCHED = bytes.fromhex("02008052")
+
+# Both earlier DEFEX hypotheses were disproven on hardware and must stay stock.
+DEFEX_EXECVE_SELECTOR_OFFSET = 0x154524
+DEFEX_EXECVE_SELECTOR_STOCK = bytes.fromhex("821B8012")
+DEFEX_EXECVE_SELECTOR_OLD_EXPERIMENT = bytes.fromhex("E2FF8F12")
+OTHER_ADB_ROOT_OFFSET = 0x2F47D4
+OTHER_ADB_ROOT_STOCK = bytes.fromhex("01FA8052")
+OTHER_ADB_ROOT_OLD_EXPERIMENT = bytes.fromhex("01008052")
 EXPECTED_DT_SHA256 = "25fd9f99fcb520b117475c812302afdfd53f8f36dbcda6a9416429b2401ddafb"
 
 
@@ -145,13 +155,25 @@ def main() -> int:
     kernel_sha256 = digest(kernel)
     if kernel_sha256 != EXPECTED_KERNEL_SHA256:
         errors.append(
-            "kernel differs from the exact J720F Android 10 stock kernel with the "
-            "recovery-only DEFEX execve patch"
+            "kernel differs from the exact J720F CUL1 recovery kernel with the "
+            "proven /sbin/adbd exec credential patch"
         )
-    if kernel[DEFEX_EXECVE_OFFSET : DEFEX_EXECVE_OFFSET + 4] != DEFEX_EXECVE_NEW:
-        errors.append("recovery kernel is missing the audited Samsung DEFEX execve patch")
-    if DEFEX_EXECVE_OLD in kernel:
-        errors.append("unpatched Samsung DEFEX execve selector remains in recovery kernel")
+    if kernel[ADB_EXEC_CRED_OFFSET : ADB_EXEC_CRED_OFFSET + 4] != ADB_EXEC_CRED_PATCHED:
+        errors.append("recovery kernel is missing the proven ADB exec credential patch")
+
+    selector = kernel[DEFEX_EXECVE_SELECTOR_OFFSET : DEFEX_EXECVE_SELECTOR_OFFSET + 4]
+    if selector != DEFEX_EXECVE_SELECTOR_STOCK:
+        if selector == DEFEX_EXECVE_SELECTOR_OLD_EXPERIMENT:
+            errors.append("obsolete generic DEFEX execve-selector experiment remains")
+        else:
+            errors.append("unexpected generic DEFEX execve-selector bytes")
+
+    other_adb = kernel[OTHER_ADB_ROOT_OFFSET : OTHER_ADB_ROOT_OFFSET + 4]
+    if other_adb != OTHER_ADB_ROOT_STOCK:
+        if other_adb == OTHER_ADB_ROOT_OLD_EXPERIMENT:
+            errors.append("obsolete alternate DEFEX ADB-root experiment remains")
+        else:
+            errors.append("unexpected alternate DEFEX ADB-root bytes")
     if digest(dt) != EXPECTED_DT_SHA256:
         errors.append("DT differs from the exact J720F Android 10 stock DT")
 
@@ -540,8 +562,8 @@ def main() -> int:
     for domain in ("init", "recovery"):
         if f"permissive {domain};" in all_device_policy:
             errors.append(f"device policy still declares {domain} permissive")
-    if "permissive adbd;" in adbd_policy:
-        errors.append("device adbd policy still relies on ineffective permissive mode")
+    if "permissive adbd;" not in adbd_policy:
+        errors.append("device adbd policy is missing the intentional recovery-only permissive domain")
 
     for rule in (
         "allow init configfs:file create_file_perms;",
@@ -639,7 +661,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB with pinned CUL1 kernel/DT and recovery-only DEFEX execve patch",
+        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB with pinned CUL1 kernel/DT and proven recovery-only ADB exec credential patch",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),
@@ -647,11 +669,13 @@ def main() -> int:
         "header": header,
         "kernel_sha256": kernel_sha256,
         "stock_kernel_sha256": STOCK_KERNEL_SHA256,
-        "kernel_defex_patch": {
-            "offset": DEFEX_EXECVE_OFFSET,
-            "offset_hex": hex(DEFEX_EXECVE_OFFSET),
-            "before_hex": DEFEX_EXECVE_OLD.hex(),
-            "after_hex": DEFEX_EXECVE_NEW.hex(),
+        "kernel_adb_exec_credential_patch": {
+            "offset": ADB_EXEC_CRED_OFFSET,
+            "offset_hex": hex(ADB_EXEC_CRED_OFFSET),
+            "before_hex": ADB_EXEC_CRED_STOCK.hex(),
+            "after_hex": ADB_EXEC_CRED_PATCHED.hex(),
+            "generic_defex_selector_stock": DEFEX_EXECVE_SELECTOR_STOCK.hex(),
+            "alternate_adb_root_stock": OTHER_ADB_ROOT_STOCK.hex(),
             "scope": "recovery image only",
         },
         "dt_sha256": digest(dt),

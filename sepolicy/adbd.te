@@ -1,6 +1,14 @@
 # Native Android 7.1 adbd remains UID 0 in u:r:adbd:s0.
 # Avoid the --root_seclabel transition to su and grant the actual runtime
 # domain the FunctionFS and ffs.ready property operations it needs.
+#
+# Hardware proved the Samsung CUL1 kernel's exec credential coercion separately;
+# after neutralizing that recovery-only kernel path, adb shell reaches /sbin/sh as
+# real UID/GID 0. Keep only the recovery ADB domain permissive so that the root
+# shell behaves like a real recovery root shell (rootfs traversal, /tmp, block
+# tools, push/pull, mounts, etc.) instead of whack-a-mole policy denials. Global
+# SELinux remains Enforcing and init/recovery remain enforcing domains.
+permissive adbd;
 allow adbd functionfs:filesystem getattr;
 allow adbd functionfs:dir r_dir_perms;
 allow adbd functionfs:file rw_file_perms;
@@ -13,8 +21,8 @@ set_prop(adbd, ffs_prop)
 # silently falls back to TCP port 5555.
 get_prop(adbd, twrp_prop)
 
-# Direct-trace files use the dedicated j720f_adbd_trace_file type declared in
-# j720f_trace.te. Do not grant adbd generic write access to every tmpfs file.
+# Direct-trace files keep their dedicated label for auditable diagnostics even
+# though the recovery-only adbd domain itself is intentionally permissive.
 
 # Keep both the proven USB daemon and its forked root command child in
 # u:r:adbd:s0. The J720F ramdisk shell, linker and libraries are rootfs-labelled.
