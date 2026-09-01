@@ -18,7 +18,11 @@ import tempfile
 
 LIMIT = 39_845_888
 PAGE = 2048
-EXPECTED_KERNEL_SHA256 = "f91660e294f4532d266d23f386f99f4e9c290859154236d82e5280af9f11d268"
+STOCK_KERNEL_SHA256 = "f91660e294f4532d266d23f386f99f4e9c290859154236d82e5280af9f11d268"
+EXPECTED_KERNEL_SHA256 = "03e4c4e2dbe3fe32051e71e295d1bb8901fca5565ff3b58f81272a1a498b4d18"
+DEFEX_EXECVE_OFFSET = 0x154524
+DEFEX_EXECVE_OLD = bytes.fromhex("821B8012")
+DEFEX_EXECVE_NEW = bytes.fromhex("E2FF8F12")
 EXPECTED_DT_SHA256 = "25fd9f99fcb520b117475c812302afdfd53f8f36dbcda6a9416429b2401ddafb"
 
 
@@ -138,8 +142,16 @@ def main() -> int:
         if header[key] != expected:
             errors.append(f"header {key}={header[key]!r}; expected {expected!r}")
 
-    if digest(kernel) != EXPECTED_KERNEL_SHA256:
-        errors.append("kernel differs from the exact J720F Android 10 stock kernel")
+    kernel_sha256 = digest(kernel)
+    if kernel_sha256 != EXPECTED_KERNEL_SHA256:
+        errors.append(
+            "kernel differs from the exact J720F Android 10 stock kernel with the "
+            "recovery-only DEFEX execve patch"
+        )
+    if kernel[DEFEX_EXECVE_OFFSET : DEFEX_EXECVE_OFFSET + 4] != DEFEX_EXECVE_NEW:
+        errors.append("recovery kernel is missing the audited Samsung DEFEX execve patch")
+    if DEFEX_EXECVE_OLD in kernel:
+        errors.append("unpatched Samsung DEFEX execve selector remains in recovery kernel")
     if digest(dt) != EXPECTED_DT_SHA256:
         errors.append("DT differs from the exact J720F Android 10 stock DT")
 
@@ -627,13 +639,21 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB bind diagnostic with pinned CUL1 kernel/DT",
+        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB with pinned CUL1 kernel/DT and recovery-only DEFEX execve patch",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),
         "sha256": digest(blob),
         "header": header,
-        "kernel_sha256": digest(kernel),
+        "kernel_sha256": kernel_sha256,
+        "stock_kernel_sha256": STOCK_KERNEL_SHA256,
+        "kernel_defex_patch": {
+            "offset": DEFEX_EXECVE_OFFSET,
+            "offset_hex": hex(DEFEX_EXECVE_OFFSET),
+            "before_hex": DEFEX_EXECVE_OLD.hex(),
+            "after_hex": DEFEX_EXECVE_NEW.hex(),
+            "scope": "recovery image only",
+        },
         "dt_sha256": digest(dt),
         "errors": errors,
         "warnings": warnings,
