@@ -206,7 +206,8 @@ def main() -> int:
             b"J720F_USB_DIAG",
             b"J720F_MAIN_USB_GATE",
             b"J720F_MAIN_USB_DECISION",
-            b"J720F_SHELL_CHILD phase=inherited_root_seclabel",
+            b"J720F_SHELL_CHILD phase=pre_setcon_su",
+            b"J720F_SHELL_CHILD phase=post_setcon_su",
             b"J720F_SHELL_CHILD phase=pre_exec",
             b"/tmp/J720F_ADBD_TRACE.txt",
         ):
@@ -242,15 +243,11 @@ def main() -> int:
         require_contains(
             errors,
             init_rc,
-            "service adbd /sbin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery",
-            "stock-style native Android 7.1 root adbd service",
+            "service adbd /sbin/adbd --device_banner=recovery",
+            "native Android 7.1 recovery adbd service",
         )
-        root_label_services = re.findall(
-            r"(?m)^[ \t]*service[ \t]+adbd[ \t]+[^\n#]*--root_seclabel=[^ \t\n]+",
-            init_rc,
-        )
-        if len(root_label_services) != 1 or "--root_seclabel=u:r:su:s0" not in root_label_services[0]:
-            errors.append("init.rc does not use exactly the stock u:r:su:s0 root adbd label")
+        if re.search(r"(?m)^[ \t]*service[ \t]+adbd[ \t]+[^\n#]*--root_seclabel=", init_rc):
+            errors.append("init.rc still moves the whole adbd daemon out of the proven adbd domain")
         if "/sbin/permissive.sh" in init_rc:
             errors.append("init.rc still invokes the obsolete late-permissive helper")
 
@@ -542,6 +539,8 @@ def main() -> int:
         "get_prop(adbd, twrp_prop)",
         "allow adbd self:process setcurrent;",
         "allow adbd su:process dyntransition;",
+        "allow su adbd:fd use;",
+        "allow su adbd:unix_stream_socket { read write ioctl getattr };",
     ):
         require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
     for stale_rule in (

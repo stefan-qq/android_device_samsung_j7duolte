@@ -16,10 +16,12 @@ get_prop(adbd, twrp_prop)
 # Direct-trace files use the dedicated j720f_adbd_trace_file type declared in
 # j720f_trace.te. Do not grant adbd generic write access to every tmpfs file.
 
-# Match CUL1 stock/AOSP recovery root-adbd architecture. init starts adbd in
-# u:r:adbd:s0; donor adbd then uses --root_seclabel=u:r:su:s0 after confirming
-# it remains UID 0. The platform eng recovery policy already defines su as the
-# permissive adb-root domain and grants adbd -> su dyntransition. setcurrent is
-# retained here explicitly because donor adbd performs the setcon() itself.
+# Keep the parent USB daemon in the proven u:r:adbd:s0 domain. Only a forked
+# command child performs setcon(u:r:su:s0) immediately before executing the
+# recovery shell. The platform eng recovery policy defines su as the permissive
+# adb-root domain; grant the explicit dyntransition plus access to the inherited
+# adbd command-channel descriptors.
 allow adbd self:process setcurrent;
 allow adbd su:process dyntransition;
+allow su adbd:fd use;
+allow su adbd:unix_stream_socket { read write ioctl getattr };
