@@ -251,15 +251,24 @@ def main() -> int:
             b"J720F_USB_DIAG",
             b"J720F_MAIN_USB_GATE",
             b"J720F_MAIN_USB_DECISION",
-            b"J720F_SHELL_CHILD phase=adbd_root_pre_exec",
-            b"J720F root adb child lost UID 0 before exec",
-            b"J720F /sbin/sh is not executable in adbd domain",
+            b"J720F_SHELL_CHILD phase=pre_setcon_recovery",
+            b"J720F_SHELL_CHILD phase=post_setcon_recovery",
+            b"J720F_CHILD_RECOVERY_SELCON failed",
+            b"J720F adb command child lost root before recovery setcon",
+            b"J720F recovery-domain adb child lost UID/GID 0 before exec",
+            b"J720F /sbin/sh is not executable in recovery child domain",
             b"/tmp/J720F_ADBD_TRACE.txt",
         ):
             if marker not in adbd:
                 errors.append(f"instrumented /sbin/adbd is missing marker: {marker!r}")
         if b"/data/adb/adb-" in adbd:
             errors.append("instrumented /sbin/adbd still writes its native trace under /data")
+        for stale_marker in (
+            b"J720F_SHELL_CHILD phase=adbd_root_pre_exec",
+            b"J720F_CHILD_SU_SELCON failed",
+        ):
+            if stale_marker in adbd:
+                errors.append(f"instrumented /sbin/adbd retains stale command-child marker: {stale_marker!r}")
 
         service_rc = read_text(root, "init.recovery.service.rc")
         require_contains(errors, service_rc, "service recovery /sbin/recovery", "recovery service rc")
@@ -562,8 +571,8 @@ def main() -> int:
     for domain in ("init", "recovery"):
         if f"permissive {domain};" in all_device_policy:
             errors.append(f"device policy still declares {domain} permissive")
-    if "permissive adbd;" not in adbd_policy:
-        errors.append("device adbd policy is missing the intentional recovery-only permissive domain")
+    if "permissive adbd;" in adbd_policy:
+        errors.append("device adbd policy must not make the USB daemon permissive")
 
     for rule in (
         "allow init configfs:file create_file_perms;",
@@ -583,16 +592,16 @@ def main() -> int:
         "set_prop(adbd, ffs_prop)",
         "get_prop(adbd, twrp_prop)",
         "allow adbd rootfs:file rx_file_perms;",
-    ):
-        require_contains(errors, adbd_policy, rule, "device native adbd startup policy")
-    for stale_rule in (
         "allow adbd self:process setcurrent;",
+        "allow adbd recovery:process dyntransition;",
+        "allow recovery adbd:fd use;",
+        "allow recovery adbd:unix_stream_socket { read write ioctl getattr };",
+    ):
+        require_contains(errors, adbd_policy, rule, "device native adbd / recovery-child policy")
+    for stale_rule in (
         "allow adbd su:process dyntransition;",
         "allow su adbd:fd use;",
         "allow su adbd:unix_stream_socket",
-        "allow adbd recovery:process",
-        "allow recovery adbd:fd use;",
-        "allow recovery adbd:unix_stream_socket",
         "domain_trans(adbd, rootfs, shell)",
         "allow adbd shell:process dyntransition;",
         "allow adbd shell:process noatsecure;",

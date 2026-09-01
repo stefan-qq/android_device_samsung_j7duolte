@@ -1,14 +1,16 @@
-# Native Android 7.1 adbd remains UID 0 in u:r:adbd:s0.
-# Avoid the --root_seclabel transition to su and grant the actual runtime
-# domain the FunctionFS and ffs.ready property operations it needs.
+# Native Android 7.1 adbd remains UID 0 in u:r:adbd:s0 for the proven
+# FunctionFS/USB transport. Only the forked command child changes domain.
 #
-# Hardware proved the Samsung CUL1 kernel's exec credential coercion separately;
-# after neutralizing that recovery-only kernel path, adb shell reaches /sbin/sh as
-# real UID/GID 0. Keep only the recovery ADB domain permissive so that the root
-# shell behaves like a real recovery root shell (rootfs traversal, /tmp, block
-# tools, push/pull, mounts, etc.) instead of whack-a-mole policy denials. Global
-# SELinux remains Enforcing and init/recovery remain enforcing domains.
-permissive adbd;
+# Hardware proved two independent facts on SM-J720F/CUL1:
+#   1. Samsung rewrites root ADB exec credentials to AID_SHELL unless the
+#      recovery-only kernel credential instruction at +0x154d18 is neutralized.
+#   2. With real UID/GID 0 preserved, u:r:adbd:s0 still cannot perform normal
+#      recovery operations (readdir /, create /tmp files, klogctl, push/pull),
+#      while the native TWRP u:r:recovery:s0 domain can.
+#
+# Therefore keep the parent USB daemon in u:r:adbd:s0 and dynamically move only
+# its already-forked command child into u:r:recovery:s0 before /sbin/sh exec.
+# Global SELinux remains Enforcing; neither adbd nor recovery is permissive.
 allow adbd functionfs:filesystem getattr;
 allow adbd functionfs:dir r_dir_perms;
 allow adbd functionfs:file rw_file_perms;
@@ -16,16 +18,18 @@ set_prop(adbd, ffs_prop)
 
 # The forced-FunctionFS selector is published as j720f.usb.transport and is
 # labelled twrp_prop by property_contexts. Android property reads are MAC-
-# checked, so adbd must be able to read that property before its one-shot USB
-# decision. Without this, property_get() returns the empty default and adbd
-# silently falls back to TCP port 5555.
+# checked, so adbd must read it before its one-shot USB decision.
 get_prop(adbd, twrp_prop)
 
-# Direct-trace files keep their dedicated label for auditable diagnostics even
-# though the recovery-only adbd domain itself is intentionally permissive.
-
-# Keep both the proven USB daemon and its forked root command child in
-# u:r:adbd:s0. The J720F ramdisk shell, linker and libraries are rootfs-labelled.
-# rx_file_perms includes execute_no_trans, so /sbin/sh executes without the
-# shell/recovery/su domain transitions that regressed credentials on hardware.
+# /sbin lives on rootfs. Keep the already-proven adbd read/execute access for
+# diagnostics and the command-child handoff. Actual shell execution occurs only
+# after the child is in u:r:recovery:s0.
 allow adbd rootfs:file rx_file_perms;
+
+# Child-only recovery-domain handoff. setcurrent + dyntransition are required by
+# selinux_android_setcon() in the forked shell-service child. The recovery child
+# must retain access to the stdio/error descriptors created by adbd.
+allow adbd self:process setcurrent;
+allow adbd recovery:process dyntransition;
+allow recovery adbd:fd use;
+allow recovery adbd:unix_stream_socket { read write ioctl getattr };
