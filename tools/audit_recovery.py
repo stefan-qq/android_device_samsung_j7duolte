@@ -329,12 +329,10 @@ def main() -> int:
             "ro.secure=0",
             "ro.adb.secure=0",
             "ro.debuggable=1",
-            "persist.sys.usb.config=adb",
+            "persist.sys.usb.config=mtp,adb",
         ):
             if line not in properties.splitlines():
                 errors.append(f"default.prop is missing: {line}")
-        if "persist.sys.usb.config=mtp" in properties:
-            errors.append("default.prop still enables MTP")
 
         fstab = read_text(root, "etc/recovery.fstab")
         require_contains(errors, fstab, "/external_sd vfat /dev/block/mmcblk1p1 /dev/block/mmcblk1", "TWRP fstab")
@@ -462,8 +460,14 @@ def main() -> int:
                 errors.append(f"native FunctionFS rc contains rejected legacy ADB path: {forbidden}")
         if "/sys/fs/selinux/enforce" in usb or "/sbin/permissive.sh" in usb:
             errors.append("USB rc still contains the failed late-permissive workaround")
-        if "mtp" in usb.lower():
-            errors.append("USB rc still contains an MTP path")
+        for line in (
+            "functions/mtp.gs0",
+            "configs/c.1/mtp.gs0",
+            "write /sys/class/android_usb/android0/functions mtp,adb",
+            "setprop sys.usb.config mtp,adb",
+            "setprop sys.usb.state mtp,adb",
+        ):
+            require_contains(errors, usb, line, "Samsung kernel-MTP + FunctionFS ADB rc")
         if "j720f_usb_report" in usb:
             errors.append("USB rc still relies on the failed init-domain report service")
 
@@ -552,7 +556,7 @@ def main() -> int:
         "RECOVERY_GRAPHICS_USE_LINELENGTH := true",
         "TW_USE_NEW_MINADBD := true",
         "TW_INCLUDE_CRYPTO := true",
-        "TW_EXCLUDE_MTP := true",
+        'TW_MTP_DEVICE := "/dev/mtp_usb"',
         "TW_DEFAULT_EXTERNAL_STORAGE := true",
     ):
         require_contains(errors, board, required_setting, "BoardConfig.mk")

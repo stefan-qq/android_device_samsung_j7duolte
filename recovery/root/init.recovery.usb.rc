@@ -52,6 +52,11 @@ on fs
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration "Conf 1"
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/MaxPower 0x3f
 
+    # Kernel-backed Samsung MTP (CONFIG_USB_F_MTP=y). Creating this ConfigFS
+    # function instantiates /dev/mtp_usb; TWRP uses that node via TW_MTP_DEVICE.
+    mkdir /sys/kernel/config/usb_gadget/g1/functions/mtp.gs0 0770 root root
+    symlink /sys/kernel/config/usb_gadget/g1/functions/mtp.gs0 /sys/kernel/config/usb_gadget/g1/configs/c.1/mtp.gs0
+
     mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
     # Match the exact Samsung stock-recovery topology: register the ffs.adb
     # function with c.1 before FunctionFS is mounted and before adbd opens ep0.
@@ -74,7 +79,7 @@ on fs
 on boot
     setprop j720f.usb.boot_action 1
     setprop sys.usb.config none
-    setprop sys.usb.config adb
+    setprop sys.usb.config mtp,adb
 
 on property:sys.usb.config=none && property:sys.usb.configfs=1
     write /sys/kernel/config/usb_gadget/g1/UDC none
@@ -87,7 +92,7 @@ on property:sys.usb.config=none && property:sys.usb.configfs=1
 # Start the native donor-era recovery adbd after FunctionFS is mounted.
 # Parent and command children remain UID/GID 0 in u:r:adbd:s0. Command children
 # execute the ramdisk /sbin/sh without a SELinux domain transition.
-on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1
+on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1
     # Reassert immediately before process creation so adbd observes tracing even
     # if a later property-load action replaced the early-init value.
     setprop persist.adb.trace_mask all
@@ -98,7 +103,7 @@ on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.
 # The ffs.adb function was already linked into c.1 during the fs action, in
 # the same order used by the exact Samsung Android 10 stock recovery. Bind the
 # already-complete ConfigFS gadget only after FunctionFS is ready.
-on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
     # The CUL1 Samsung 4.4 kernel uses the legacy android_usb sysfs gate around
     # its ConfigFS UDC attach. PID 1 reaches g1/UDC successfully without this
     # sequence, but the ConfigFS UDC attach returns -EINVAL. Reproduce only the
@@ -108,12 +113,12 @@ on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.u
     write /sys/kernel/config/usb_gadget/g1/idVendor 0x04E8
     write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
     write /sys/class/android_usb/android0/f_ffs/aliases adb
-    write /sys/class/android_usb/android0/functions adb
+    write /sys/class/android_usb/android0/functions mtp,adb
     write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
     write /sys/class/android_usb/android0/enable 1
     setprop j720f.usb.configfs_bind 1
     setprop j720f.usb.udc_bind_action 1
-    setprop sys.usb.state adb
+    setprop sys.usb.state mtp,adb
 
 on property:init.svc.adbd=stopped
     setprop sys.usb.ffs.ready 0

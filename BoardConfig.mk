@@ -80,9 +80,9 @@ BOARD_HAS_NO_REAL_SDCARD := true
 RECOVERY_SDCARD_ON_DATA := true
 TW_DEFAULT_EXTERNAL_STORAGE := true
 
-# Keep MTP out of this one root-cause build. ADB and MTP share the same USB
-# gadget/UDC path; first prove native adbd while it stays in u:r:adbd:s0, then
-# enable MTP in a small follow-up without mixing another daemon here.
-TW_EXCLUDE_MTP := true
+# Samsung CUL1 exposes the kernel-backed MTP gadget as /dev/mtp_usb.
+# Keep ADB on its proven FunctionFS path and let TWRP serve MTP through the
+# separate kernel MTP function.
+TW_MTP_DEVICE := "/dev/mtp_usb"
 TW_EXCLUDE_TWRPAPP := true
 TW_EXCLUDE_SUPERSU := true
