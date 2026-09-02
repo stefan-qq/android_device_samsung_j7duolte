@@ -41,5 +41,8 @@ allow recovery sysfs:file r_file_perms;
 allow recovery sysfs_usb:dir r_dir_perms;
 allow recovery sysfs_usb:file r_file_perms;
 
+# Kernel-backed Samsung MTP gadget (/dev/usb_mtp_gadget).
+allow recovery mtp_device:chr_file rw_file_perms;
+
 # Android 7.1 system/sepolicy/domain.te has an unconditional neverallow against
 # writing rootfs-labelled files, so no rootfs write workaround belongs here.

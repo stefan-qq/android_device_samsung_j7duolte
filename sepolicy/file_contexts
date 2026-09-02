@@ -1,2 +1,5 @@
 /tmp/J720F_ADBD_USB_TRACE\.txt    u:object_r:j720f_adbd_trace_file:s0
 /tmp/J720F_ADBD_TRACE\.txt        u:object_r:j720f_adbd_trace_file:s0
+
+# Samsung kernel MTP misc gadget used by TWRP.
+/dev/usb_mtp_gadget.*                  u:object_r:mtp_device:s0

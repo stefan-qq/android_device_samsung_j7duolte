@@ -52,11 +52,6 @@ on fs
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/strings/0x409/configuration "Conf 1"
     write /sys/kernel/config/usb_gadget/g1/configs/c.1/MaxPower 0x3f
 
-    # Kernel-backed Samsung MTP (CONFIG_USB_F_MTP=y). Creating this ConfigFS
-    # function instantiates /dev/mtp_usb; TWRP uses that node via TW_MTP_DEVICE.
-    mkdir /sys/kernel/config/usb_gadget/g1/functions/mtp.gs0 0770 root root
-    symlink /sys/kernel/config/usb_gadget/g1/functions/mtp.gs0 /sys/kernel/config/usb_gadget/g1/configs/c.1/mtp.gs0
-
     mkdir /sys/kernel/config/usb_gadget/g1/functions/ffs.adb 0770 shell shell
     # Match the exact Samsung stock-recovery topology: register the ffs.adb
     # function with c.1 before FunctionFS is mounted and before adbd opens ep0.
@@ -64,6 +59,14 @@ on fs
     # "Config c/1 of g1 needs at least one function" even though the late
     # symlink remained visible in ConfigFS. Keep this link for the whole boot.
     symlink /sys/kernel/config/usb_gadget/g1/functions/ffs.adb /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb
+
+    # Samsung's 4.4 kernel provides the legacy kernel MTP gadget
+    # (CONFIG_USB_F_MTP=y). Create the ConfigFS function as PID 1 so the
+    # /dev/usb_mtp_gadget misc node exists before TWRP starts its MTP server.
+    # Keep it unlinked until sys.usb.config requests mtp,adb so ADB-only mode
+    # retains the exact proven FunctionFS composition.
+    mkdir /sys/kernel/config/usb_gadget/g1/functions/mtp.0 0770 root root
+    setprop j720f.usb.mtp_create_action 1
 
     mkdir /dev/usb-ffs 0775 shell shell
     mkdir /dev/usb-ffs/adb 0770 shell shell
@@ -79,12 +82,15 @@ on fs
 on boot
     setprop j720f.usb.boot_action 1
     setprop sys.usb.config none
-    setprop sys.usb.config mtp,adb
+    setprop sys.usb.config adb
 
 on property:sys.usb.config=none && property:sys.usb.configfs=1
     write /sys/kernel/config/usb_gadget/g1/UDC none
     # Do not unlink ffs.adb here. Samsung stock recovery creates the link
     # before mounting FunctionFS and preserves it across USB state changes.
+    # MTP is the optional second function and may be removed safely while the
+    # UDC is detached.
+    rm /sys/kernel/config/usb_gadget/g1/configs/c.1/mtp.0
     stop adbd
     setprop sys.usb.ffs.ready 0
     setprop sys.usb.state none
@@ -92,32 +98,56 @@ on property:sys.usb.config=none && property:sys.usb.configfs=1
 # Start the native donor-era recovery adbd after FunctionFS is mounted.
 # Parent and command children remain UID/GID 0 in u:r:adbd:s0. Command children
 # execute the ramdisk /sbin/sh without a SELinux domain transition.
-on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1
+on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1
     # Reassert immediately before process creation so adbd observes tracing even
     # if a later property-load action replaced the early-init value.
     setprop persist.adb.trace_mask all
     start adbd
     setprop j720f.usb.adbd_start_action 1
 
+on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1
+    # TWRP switches sys.usb.config directly when MTP is enabled. The same native
+    # adbd/FunctionFS endpoint must remain the ADB half of the composite gadget.
+    setprop persist.adb.trace_mask all
+    start adbd
+    setprop j720f.usb.mtp_adbd_start_action 1
+
 # adbd publishes ffs.ready only after it opens ep0 and writes descriptors.
 # The ffs.adb function was already linked into c.1 during the fs action, in
 # the same order used by the exact Samsung Android 10 stock recovery. Bind the
 # already-complete ConfigFS gadget only after FunctionFS is ready.
-on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
     # The CUL1 Samsung 4.4 kernel uses the legacy android_usb sysfs gate around
-    # its ConfigFS UDC attach. PID 1 reaches g1/UDC successfully without this
-    # sequence, but the ConfigFS UDC attach returns -EINVAL. Reproduce only the
-    # four stock-recovery gate writes while keeping our proven ConfigFS/FFS
-    # topology and native recovery adbd unchanged.
+    # its ConfigFS UDC attach. Keep ffs.adb permanently registered first, but
+    # detach and remove the optional MTP link when TWRP requests ADB-only mode.
     write /sys/class/android_usb/android0/enable 0
+    write /sys/kernel/config/usb_gadget/g1/UDC none
+    rm /sys/kernel/config/usb_gadget/g1/configs/c.1/mtp.0
+    write /sys/kernel/config/usb_gadget/g1/idVendor 0x04E8
+    write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
+    write /sys/class/android_usb/android0/f_ffs/aliases adb
+    write /sys/class/android_usb/android0/functions adb
+    write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
+    write /sys/class/android_usb/android0/enable 1
+    setprop j720f.usb.configfs_bind 1
+    setprop j720f.usb.udc_bind_action 1
+    setprop sys.usb.state adb
+
+# TWRP's kernel-backed MTP server requests the normal mtp,adb composition.
+# Link MTP only after the proven ffs.adb function is ready, preserving Samsung's
+# required stock registration order and the existing native adbd transport.
+on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/kernel/config/usb_gadget/g1/UDC none
+    rm /sys/kernel/config/usb_gadget/g1/configs/c.1/mtp.0
+    symlink /sys/kernel/config/usb_gadget/g1/functions/mtp.0 /sys/kernel/config/usb_gadget/g1/configs/c.1/mtp.0
     write /sys/kernel/config/usb_gadget/g1/idVendor 0x04E8
     write /sys/kernel/config/usb_gadget/g1/idProduct 0x6860
     write /sys/class/android_usb/android0/f_ffs/aliases adb
     write /sys/class/android_usb/android0/functions mtp,adb
     write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}
     write /sys/class/android_usb/android0/enable 1
-    setprop j720f.usb.configfs_bind 1
-    setprop j720f.usb.udc_bind_action 1
+    setprop j720f.usb.mtp_configfs_bind 1
     setprop sys.usb.state mtp,adb
 
 on property:init.svc.adbd=stopped

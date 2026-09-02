@@ -329,10 +329,12 @@ def main() -> int:
             "ro.secure=0",
             "ro.adb.secure=0",
             "ro.debuggable=1",
-            "persist.sys.usb.config=mtp,adb",
+            "persist.sys.usb.config=adb",
         ):
             if line not in properties.splitlines():
                 errors.append(f"default.prop is missing: {line}")
+        if "persist.sys.usb.config=mtp" in properties:
+            errors.append("default.prop still enables MTP")
 
         fstab = read_text(root, "etc/recovery.fstab")
         require_contains(errors, fstab, "/external_sd vfat /dev/block/mmcblk1p1 /dev/block/mmcblk1", "TWRP fstab")
@@ -377,15 +379,23 @@ def main() -> int:
             "mount configfs none /sys/kernel/config",
             "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
             "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
+            "/sys/kernel/config/usb_gadget/g1/functions/mtp.0",
+            "/sys/kernel/config/usb_gadget/g1/configs/c.1/mtp.0",
+            "setprop j720f.usb.mtp_create_action 1",
             "mount functionfs adb /dev/usb-ffs/adb uid=0,gid=0",
             "setprop j720f.usb.ffs_mounted 1",
             "service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh",
             "on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1",
+            "on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1",
+            "write /sys/class/android_usb/android0/functions mtp,adb",
+            "setprop j720f.usb.mtp_configfs_bind 1",
+            "setprop sys.usb.state mtp,adb",
             "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}",
             "setprop j720f.usb.configfs_bind 1",
             "setprop j720f.usb.udc_bind_action 1",
             "setprop sys.usb.config adb",
             "on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1",
+            "on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1",
             "start adbd",
             "setprop j720f.usb.ffs_mount_action 1",
             "setprop j720f.usb.configfs_action 1",
@@ -414,6 +424,19 @@ def main() -> int:
             )
         if usb.count(link_line) != 1:
             errors.append("ConfigFS ffs.adb link must appear exactly once in the USB rc")
+        mtp_create = "mkdir /sys/kernel/config/usb_gadget/g1/functions/mtp.0 0770 root root"
+        mtp_create_index = usb.find(mtp_create)
+        if mtp_create_index < 0 or not (link_index < mtp_create_index < mount_index):
+            errors.append(
+                "MTP function must be created by init only after the permanent ffs.adb "
+                "registration and before the FunctionFS mount"
+            )
+        mtp_link = (
+            "symlink /sys/kernel/config/usb_gadget/g1/functions/mtp.0 "
+            "/sys/kernel/config/usb_gadget/g1/configs/c.1/mtp.0"
+        )
+        if usb.count(mtp_link) != 1:
+            errors.append("MTP function must be linked exactly once in the mtp,adb bind action")
         if "rm /sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb" in usb:
             errors.append("USB none action still removes the stock-order ffs.adb link")
         if "j720f.usb.pure_configfs_bind_action" in usb:
@@ -425,30 +448,68 @@ def main() -> int:
                 f"/dev/usb-ffs/adb/{endpoint}                                 0600 root root",
                 "root-owned FunctionFS endpoint permissions",
             )
+        require_contains(
+            errors,
+            ueventd,
+            "/dev/usb_mtp_gadget                                0660 root root",
+            "Samsung MTP gadget permissions",
+        )
 
-        stock_gate = [
+        adb_gate = [
             "write /sys/class/android_usb/android0/enable 0",
             "write /sys/class/android_usb/android0/f_ffs/aliases adb",
             "write /sys/class/android_usb/android0/functions adb",
+            "write /sys/class/android_usb/android0/enable 1",
+        ]
+        mtp_gate = [
+            "write /sys/class/android_usb/android0/enable 0",
+            "write /sys/class/android_usb/android0/f_ffs/aliases adb",
+            "write /sys/class/android_usb/android0/functions mtp,adb",
             "write /sys/class/android_usb/android0/enable 1",
         ]
         android_usb_lines = [
             line.strip() for line in usb.splitlines()
             if "/sys/class/android_usb/android0/" in line
         ]
-        if android_usb_lines != stock_gate:
+        expected_android_usb_lines = adb_gate + mtp_gate
+        if android_usb_lines != expected_android_usb_lines:
             errors.append(
-                "native FunctionFS rc must contain exactly the four CUL1 stock "
-                f"android_usb gate writes; found: {android_usb_lines}"
+                "native FunctionFS/MTP rc must contain only the CUL1 android_usb "
+                f"gate writes in adb/mtp order; found: {android_usb_lines}"
             )
 
+
         udc_bind = "write /sys/kernel/config/usb_gadget/g1/UDC ${sys.usb.controller}"
-        ordered = [ready_trigger] + stock_gate[:3] + [udc_bind, stock_gate[3]]
+        ordered = [ready_trigger] + adb_gate[:3] + [udc_bind, adb_gate[3]]
         indices = [usb.find(item) for item in ordered]
         if min(indices) < 0 or indices != sorted(indices) or len(set(indices)) != len(indices):
             errors.append(
                 "CUL1 android_usb gate must wrap the ConfigFS UDC bind in stock order"
             )
+
+        mtp_trigger = (
+            "on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 "
+            "&& property:sys.usb.configfs=1"
+        )
+        mtp_sequence = [
+            "write /sys/class/android_usb/android0/enable 0",
+            "write /sys/kernel/config/usb_gadget/g1/UDC none",
+            "rm /sys/kernel/config/usb_gadget/g1/configs/c.1/mtp.0",
+            mtp_link,
+            "write /sys/class/android_usb/android0/f_ffs/aliases adb",
+            "write /sys/class/android_usb/android0/functions mtp,adb",
+            udc_bind,
+            "write /sys/class/android_usb/android0/enable 1",
+        ]
+        pos = usb.find(mtp_trigger)
+        if pos < 0:
+            errors.append("MTP ConfigFS bind trigger is missing")
+        else:
+            for item in mtp_sequence:
+                pos = usb.find(item, pos + 1)
+                if pos < 0:
+                    errors.append(f"MTP ConfigFS bind order is incomplete at: {item}")
+                    break
 
         for forbidden in (
             "mount configfs none /config",
@@ -460,14 +521,6 @@ def main() -> int:
                 errors.append(f"native FunctionFS rc contains rejected legacy ADB path: {forbidden}")
         if "/sys/fs/selinux/enforce" in usb or "/sbin/permissive.sh" in usb:
             errors.append("USB rc still contains the failed late-permissive workaround")
-        for line in (
-            "functions/mtp.gs0",
-            "configs/c.1/mtp.gs0",
-            "write /sys/class/android_usb/android0/functions mtp,adb",
-            "setprop sys.usb.config mtp,adb",
-            "setprop sys.usb.state mtp,adb",
-        ):
-            require_contains(errors, usb, line, "Samsung kernel-MTP + FunctionFS ADB rc")
         if "j720f_usb_report" in usb:
             errors.append("USB rc still relies on the failed init-domain report service")
 
@@ -535,7 +588,6 @@ def main() -> int:
 
         forbidden_ramdisk = {
             "init.recovery.vold_decrypt.rc",
-            "sbin/libtwrpmtp-legacy.so",
             "system/bin/init",
             "system/bin/adbd",
             "system/bin/linker64",
@@ -556,11 +608,11 @@ def main() -> int:
         "RECOVERY_GRAPHICS_USE_LINELENGTH := true",
         "TW_USE_NEW_MINADBD := true",
         "TW_INCLUDE_CRYPTO := true",
-        'TW_MTP_DEVICE := "/dev/mtp_usb"',
+        'TW_MTP_DEVICE := "/dev/usb_mtp_gadget"',
         "TW_DEFAULT_EXTERNAL_STORAGE := true",
     ):
         require_contains(errors, board, required_setting, "BoardConfig.mk")
-    for forbidden_setting in ("TW_INCLUDE_FBE", "TW_CRYPTO_USE_SYSTEM_VOLD"):
+    for forbidden_setting in ("TW_INCLUDE_FBE", "TW_CRYPTO_USE_SYSTEM_VOLD", "TW_EXCLUDE_MTP"):
         if forbidden_setting in board:
             errors.append(f"BoardConfig.mk still contains {forbidden_setting}")
     require_contains(
@@ -641,6 +693,7 @@ def main() -> int:
         "create_pty(recovery)",
         "set_prop(recovery, twrp_prop)",
         "set_prop(recovery, system_radio_prop)",
+        "allow recovery mtp_device:chr_file rw_file_perms;",
     ):
         require_contains(errors, policy, rule, "device recovery policy")
 
@@ -657,6 +710,9 @@ def main() -> int:
         "/tmp/J720F_ADBD_TRACE\\.txt",
     ):
         require_contains(errors, file_contexts, trace_path, "trace file_contexts")
+    require_contains(
+        errors, file_contexts, "/dev/usb_mtp_gadget.*", "MTP device file_contexts"
+    )
     for rule in (
         "allow recovery system_data_file:dir create_dir_perms;",
         "allow recovery system_data_file:file create_file_perms;",
@@ -686,7 +742,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB with pinned CUL1 kernel/DT and proven recovery-only ADB exec credential patch",
+        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB + Samsung kernel MTP with pinned CUL1 kernel/DT and proven recovery-only ADB exec credential patch",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),

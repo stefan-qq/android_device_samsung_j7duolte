@@ -80,9 +80,8 @@ BOARD_HAS_NO_REAL_SDCARD := true
 RECOVERY_SDCARD_ON_DATA := true
 TW_DEFAULT_EXTERNAL_STORAGE := true
 
-# Samsung CUL1 exposes the kernel-backed MTP gadget as /dev/mtp_usb.
-# Keep ADB on its proven FunctionFS path and let TWRP serve MTP through the
-# separate kernel MTP function.
-TW_MTP_DEVICE := "/dev/mtp_usb"
+# Samsung kernel-backed MTP gadget. Keep ADB on the existing native
+# Android 7.1 FunctionFS transport and let TWRP use the kernel misc MTP node.
+TW_MTP_DEVICE := "/dev/usb_mtp_gadget"
 TW_EXCLUDE_TWRPAPP := true
 TW_EXCLUDE_SUPERSU := true
