@@ -10,7 +10,8 @@
 #
 # Therefore keep the parent USB daemon in u:r:adbd:s0 and dynamically move only
 # its already-forked command child into u:r:recovery:s0 before /sbin/sh exec.
-# Global SELinux remains Enforcing; neither adbd nor recovery is permissive.
+# Global SELinux remains Enforcing; adbd/init stay enforcing while this donor
+# policy intentionally keeps the recovery domain permissive.
 allow adbd functionfs:filesystem getattr;
 allow adbd functionfs:dir r_dir_perms;
 allow adbd functionfs:file rw_file_perms;
@@ -31,6 +32,19 @@ allow adbd rootfs:file rx_file_perms;
 # must retain access to the stdio/error descriptors created by adbd.
 allow adbd self:process setcurrent;
 allow adbd recovery:process dyntransition;
+
+# PTY shells and isolated adb-sync helpers use the preferred exec transition.
+# The pending exec context is set only on the service thread that will fork;
+# the long-lived USB daemon itself remains u:r:adbd:s0.
+allow adbd self:process setexec;
+allow adbd recovery:process { transition siginh rlimitinh };
+dontaudit adbd recovery:process noatsecure;
+allow recovery rootfs:file entrypoint;
+
+# PTY slave descriptors are opened while the child is still in adbd and remain
+# generic devpts objects across the exec transition. Recovery must be allowed to
+# use that inherited terminal after /sbin/sh enters u:r:recovery:s0.
+allow recovery devpts:chr_file { open getattr read write ioctl };
 
 # Complete the cross-domain parent/child lifecycle. waitpid() is SELinux-
 # checked as SIGCHLD from the recovery child back to its adbd parent, while
