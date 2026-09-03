@@ -370,6 +370,9 @@ def main() -> int:
             "setprop j720f.usb.pure_configfs 0",
             "setprop j720f.usb.stock_android_usb_gate 1",
             "setprop j720f.usb.stock_link_order 1",
+            "setprop j720f.usb.rebind_req idle",
+            "setprop j720f.usb.rebind_req adb",
+            "setprop j720f.usb.rebind_req mtp",
             "setprop persist.adb.trace_mask all",
             "write /tmp/J720F_ADBD_USB_TRACE.txt J720F_USB_DIAG_INIT_PRECREATED",
             "restorecon /tmp/J720F_ADBD_USB_TRACE.txt",
@@ -385,8 +388,8 @@ def main() -> int:
             "mount functionfs adb /dev/usb-ffs/adb uid=0,gid=0",
             "setprop j720f.usb.ffs_mounted 1",
             "service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh",
-            "on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1",
-            "on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1",
+            "on property:j720f.usb.rebind_req=adb && property:sys.usb.ffs.ready=1",
+            "on property:j720f.usb.rebind_req=mtp && property:sys.usb.ffs.ready=1",
             "write /sys/class/android_usb/android0/functions mtp,adb",
             "setprop j720f.usb.mtp_configfs_bind 1",
             "setprop sys.usb.state mtp,adb",
@@ -404,8 +407,13 @@ def main() -> int:
         if "mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000" in usb:
             errors.append("FunctionFS endpoints are still shell-owned while adbd runs as UID 0")
 
+        if "on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1" in usb:
+            errors.append("ADB bind still replays directly on FunctionFS-ready changes")
+        if "on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1" in usb:
+            errors.append("MTP bind still replays directly on FunctionFS-ready changes")
+
         ready_trigger = (
-            "on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 "
+            "on property:j720f.usb.rebind_req=adb && property:sys.usb.ffs.ready=1 "
             "&& property:sys.usb.configfs=1"
         )
         ready_index = usb.find(ready_trigger)
@@ -488,7 +496,7 @@ def main() -> int:
             )
 
         mtp_trigger = (
-            "on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 "
+            "on property:j720f.usb.rebind_req=mtp && property:sys.usb.ffs.ready=1 "
             "&& property:sys.usb.configfs=1"
         )
         mtp_sequence = [

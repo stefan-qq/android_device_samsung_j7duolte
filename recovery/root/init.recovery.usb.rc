@@ -16,6 +16,12 @@ on early-init
     setprop j720f.usb.pure_configfs 0
     setprop j720f.usb.stock_android_usb_gate 1
     setprop j720f.usb.stock_link_order 1
+    # Recompose only for an explicit sys.usb.config request. A host USB reset can
+    # make adbd reopen FunctionFS and republish ffs.ready; replaying Samsung's
+    # android_usb gate on that event tears down ConfigFS and can NULL-deref in
+    # make_usb_func_link(). Keep the proven gate, but serialize it through this
+    # one-shot request property.
+    setprop j720f.usb.rebind_req idle
     setprop persist.adb.trace_mask all
     setprop j720f.usb.early_init_action 1
 
@@ -93,7 +99,18 @@ on property:sys.usb.config=none && property:sys.usb.configfs=1
     rm /sys/kernel/config/usb_gadget/g1/configs/c.1/mtp.0
     stop adbd
     setprop sys.usb.ffs.ready 0
+    setprop j720f.usb.rebind_req idle
     setprop sys.usb.state none
+
+# Queue a composition change only when TWRP changes sys.usb.config. The
+# FunctionFS-ready actions below consume the request and return it to idle.
+# Therefore an ep0 reopen after a host-side USB reset cannot replay the legacy
+# Samsung android_usb teardown/relink sequence.
+on property:sys.usb.config=adb
+    setprop j720f.usb.rebind_req adb
+
+on property:sys.usb.config=mtp,adb
+    setprop j720f.usb.rebind_req mtp
 
 # Start the native donor-era recovery adbd after FunctionFS is mounted.
 # Parent and command children remain UID/GID 0 in u:r:adbd:s0. Command children
@@ -116,7 +133,7 @@ on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:j7
 # The ffs.adb function was already linked into c.1 during the fs action, in
 # the same order used by the exact Samsung Android 10 stock recovery. Bind the
 # already-complete ConfigFS gadget only after FunctionFS is ready.
-on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+on property:j720f.usb.rebind_req=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
     # The CUL1 Samsung 4.4 kernel uses the legacy android_usb sysfs gate around
     # its ConfigFS UDC attach. Keep ffs.adb permanently registered first, but
     # detach and remove the optional MTP link when TWRP requests ADB-only mode.
@@ -132,11 +149,12 @@ on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.u
     setprop j720f.usb.configfs_bind 1
     setprop j720f.usb.udc_bind_action 1
     setprop sys.usb.state adb
+    setprop j720f.usb.rebind_req idle
 
 # TWRP's kernel-backed MTP server requests the normal mtp,adb composition.
 # Link MTP only after the proven ffs.adb function is ready, preserving Samsung's
 # required stock registration order and the existing native adbd transport.
-on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
+on property:j720f.usb.rebind_req=mtp && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1
     write /sys/class/android_usb/android0/enable 0
     write /sys/kernel/config/usb_gadget/g1/UDC none
     rm /sys/kernel/config/usb_gadget/g1/configs/c.1/mtp.0
@@ -149,6 +167,7 @@ on property:sys.usb.config=mtp,adb && property:sys.usb.ffs.ready=1 && property:s
     write /sys/class/android_usb/android0/enable 1
     setprop j720f.usb.mtp_configfs_bind 1
     setprop sys.usb.state mtp,adb
+    setprop j720f.usb.rebind_req idle
 
 on property:init.svc.adbd=stopped
     setprop sys.usb.ffs.ready 0
