@@ -114,8 +114,12 @@ on property:sys.usb.config=mtp,adb
 
 # Start the native donor-era recovery adbd after FunctionFS is mounted.
 # Parent and command children remain UID/GID 0 in u:r:adbd:s0. Command children
-# execute the ramdisk /sbin/sh without a SELinux domain transition.
-on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1
+# execute the ramdisk /sbin/sh without a SELinux domain transition. Do not queue
+# a redundant start while adbd is already running: TWRP switches mtp,adb -> adb
+# immediately before apply_from_adb() stops the normal daemon for sideload. A
+# queued restart can otherwise reopen FunctionFS first and consume the one-shot
+# ADB rebind that belongs to the recovery --adbd sideload child.
+on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1 && property:init.svc.adbd=stopped
     # Reassert immediately before process creation so adbd observes tracing even
     # if a later property-load action replaced the early-init value.
     setprop persist.adb.trace_mask all

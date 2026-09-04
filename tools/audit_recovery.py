@@ -397,7 +397,7 @@ def main() -> int:
             "setprop j720f.usb.configfs_bind 1",
             "setprop j720f.usb.udc_bind_action 1",
             "setprop sys.usb.config adb",
-            "on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1",
+            "on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1 && property:init.svc.adbd=stopped",
             "on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1",
             "start adbd",
             "setprop j720f.usb.ffs_mount_action 1",
@@ -406,6 +406,15 @@ def main() -> int:
             require_contains(errors, usb, line, "native Android 7.1 FunctionFS ADB rc")
         if "mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000" in usb:
             errors.append("FunctionFS endpoints are still shell-owned while adbd runs as UID 0")
+
+        if (
+            "on property:sys.usb.config=adb && property:sys.usb.configfs=1 "
+            "&& property:j720f.usb.ffs_mounted=1\n"
+        ) in usb:
+            errors.append(
+                "ADB start trigger can queue a redundant daemon restart during the "
+                "TWRP MTP-to-sideload transition"
+            )
 
         if "on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1" in usb:
             errors.append("ADB bind still replays directly on FunctionFS-ready changes")
