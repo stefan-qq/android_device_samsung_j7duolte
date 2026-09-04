@@ -89,6 +89,12 @@ on boot
     setprop j720f.usb.boot_action 1
     setprop sys.usb.config none
     setprop sys.usb.config adb
+    # Start normal recovery adbd exactly once from the boot action. Runtime
+    # sys.usb.config=adb transitions (notably MTP -> sideload) must never queue
+    # another init-managed daemon start after apply_from_adb() has stopped it.
+    setprop persist.adb.trace_mask all
+    start adbd
+    setprop j720f.usb.adbd_start_action 1
 
 on property:sys.usb.config=none && property:sys.usb.configfs=1
     write /sys/kernel/config/usb_gadget/g1/UDC none
@@ -112,19 +118,11 @@ on property:sys.usb.config=adb
 on property:sys.usb.config=mtp,adb
     setprop j720f.usb.rebind_req mtp
 
-# Start the native donor-era recovery adbd after FunctionFS is mounted.
-# Parent and command children remain UID/GID 0 in u:r:adbd:s0. Command children
-# execute the ramdisk /sbin/sh without a SELinux domain transition. Do not queue
-# a redundant start while adbd is already running: TWRP switches mtp,adb -> adb
-# immediately before apply_from_adb() stops the normal daemon for sideload. A
-# queued restart can otherwise reopen FunctionFS first and consume the one-shot
-# ADB rebind that belongs to the recovery --adbd sideload child.
-on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1 && property:init.svc.adbd=stopped
-    # Reassert immediately before process creation so adbd observes tracing even
-    # if a later property-load action replaced the early-init value.
-    setprop persist.adb.trace_mask all
-    start adbd
-    setprop j720f.usb.adbd_start_action 1
+# Normal recovery adbd is started by the boot action above. Do not attach a
+# start command to sys.usb.config=adb at runtime: Android init re-evaluates all
+# property terms when any term changes, so adding init.svc.adbd=stopped here
+# would restart normal adbd precisely when sideload stops it. That daemon would
+# consume the one-shot FunctionFS rebind before recovery --adbd/minadbd can.
 
 on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1
     # TWRP switches sys.usb.config directly when MTP is enabled. The same native

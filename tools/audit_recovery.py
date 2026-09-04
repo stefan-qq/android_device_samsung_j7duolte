@@ -397,7 +397,6 @@ def main() -> int:
             "setprop j720f.usb.configfs_bind 1",
             "setprop j720f.usb.udc_bind_action 1",
             "setprop sys.usb.config adb",
-            "on property:sys.usb.config=adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1 && property:init.svc.adbd=stopped",
             "on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1",
             "start adbd",
             "setprop j720f.usb.ffs_mount_action 1",
@@ -407,13 +406,17 @@ def main() -> int:
         if "mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000" in usb:
             errors.append("FunctionFS endpoints are still shell-owned while adbd runs as UID 0")
 
+        boot_action = re.search(r"(?ms)^on boot\n(?P<body>.*?)(?=^on |\Z)", usb)
+        if boot_action is None or "start adbd" not in boot_action.group("body"):
+            errors.append("normal recovery adbd is not started from the boot action")
+
         if (
             "on property:sys.usb.config=adb && property:sys.usb.configfs=1 "
-            "&& property:j720f.usb.ffs_mounted=1\n"
+            "&& property:j720f.usb.ffs_mounted=1"
         ) in usb:
             errors.append(
-                "ADB start trigger can queue a redundant daemon restart during the "
-                "TWRP MTP-to-sideload transition"
+                "runtime sys.usb.config=adb still queues normal adbd; this races "
+                "the recovery --adbd sideload child"
             )
 
         if "on property:sys.usb.config=adb && property:sys.usb.ffs.ready=1" in usb:
