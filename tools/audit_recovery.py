@@ -736,6 +736,8 @@ def main() -> int:
         "set_prop(recovery, twrp_prop)",
         "set_prop(recovery, system_radio_prop)",
         "allow recovery mtp_device:chr_file rw_file_perms;",
+        "allow recovery self:capability sys_time;",
+        "allow recovery rtc_device:chr_file rw_file_perms;",
     ):
         require_contains(errors, policy, rule, "device recovery policy")
 

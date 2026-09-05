@@ -46,3 +46,10 @@ allow recovery mtp_device:chr_file rw_file_perms;
 
 # Android 7.1 system/sepolicy/domain.te has an unconditional neverallow against
 # writing rootfs-labelled files, so no rootfs write workaround belongs here.
+
+# Recovery clock correction. The stock Samsung kernel boots CLOCK_REALTIME from
+# rtc0, but this device can retain a stale PMIC RTC for years while recovery is
+# still otherwise healthy. TWRP must be able to set CLOCK_REALTIME and, during
+# explicit validation, access rtc0 without relaxing the whole recovery domain.
+allow recovery self:capability sys_time;
+allow recovery rtc_device:chr_file rw_file_perms;
