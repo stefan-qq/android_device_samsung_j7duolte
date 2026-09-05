@@ -1,4 +1,4 @@
-# SM-J720F recovery USB: native Android 7.1 FunctionFS direct-trace transport.
+# SM-J720F recovery USB: native Android 7.1 FunctionFS transport.
 #
 # Keep the exact stock kernel, DT, ConfigFS gadget shape and Samsung VID/PID,
 # but use the adbd built with the same donor-era init, bionic and property
@@ -11,7 +11,6 @@ on early-init
     setprop sys.usb.ffs.ready 0
     setprop j720f.usb.transport native-android71-ffs
     setprop j720f.usb.adbd_domain_only 1
-    setprop j720f.usb.direct_trace 1
     setprop j720f.usb.force_ffs_entry 1
     setprop j720f.usb.pure_configfs 0
     setprop j720f.usb.stock_android_usb_gate 1
@@ -22,23 +21,9 @@ on early-init
     # make_usb_func_link(). Keep the proven gate, but serialize it through this
     # one-shot request property.
     setprop j720f.usb.rebind_req idle
-    setprop persist.adb.trace_mask all
     setprop j720f.usb.early_init_action 1
 
 on fs
-    # Pre-create fixed tmpfs trace targets before adbd starts. The source-built
-    # daemon appends direct syscall results to the first file and redirects its
-    # native ADB trace stream to the second. Neither path depends on /data.
-    write /tmp/J720F_ADBD_USB_TRACE.txt J720F_USB_DIAG_INIT_PRECREATED
-    restorecon /tmp/J720F_ADBD_USB_TRACE.txt
-    chown root shell /tmp/J720F_ADBD_USB_TRACE.txt
-    chmod 0664 /tmp/J720F_ADBD_USB_TRACE.txt
-    write /tmp/J720F_ADBD_TRACE.txt J720F_ADBD_TRACE_INIT_PRECREATED
-    restorecon /tmp/J720F_ADBD_TRACE.txt
-    chown root shell /tmp/J720F_ADBD_TRACE.txt
-    chmod 0664 /tmp/J720F_ADBD_TRACE.txt
-    setprop j720f.usb.trace_precreated 1
-
     mount configfs none /sys/kernel/config
     mkdir /sys/kernel/config/usb_gadget/g1 0770 root root
     mkdir /sys/kernel/config/usb_gadget/g1/strings/0x409 0770 root root
@@ -92,7 +77,6 @@ on boot
     # Start normal recovery adbd exactly once from the boot action. Runtime
     # sys.usb.config=adb transitions (notably MTP -> sideload) must never queue
     # another init-managed daemon start after apply_from_adb() has stopped it.
-    setprop persist.adb.trace_mask all
     start adbd
     setprop j720f.usb.adbd_start_action 1
 
@@ -127,7 +111,6 @@ on property:sys.usb.config=mtp,adb
 on property:sys.usb.config=mtp,adb && property:sys.usb.configfs=1 && property:j720f.usb.ffs_mounted=1
     # TWRP switches sys.usb.config directly when MTP is enabled. The same native
     # adbd/FunctionFS endpoint must remain the ADB half of the composite gadget.
-    setprop persist.adb.trace_mask all
     start adbd
     setprop j720f.usb.mtp_adbd_start_action 1
 
@@ -173,16 +156,3 @@ on property:j720f.usb.rebind_req=mtp && property:sys.usb.ffs.ready=1 && property
 
 on property:init.svc.adbd=stopped
     setprop sys.usb.ffs.ready 0
-
-# Safe asynchronous runtime report.
-service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh
-    class default
-    user root
-    group root shell readproc
-    disabled
-    oneshot
-    seclabel u:r:recovery:s0
-
-on property:init.svc.recovery=running
-    setprop j720f.diag.triggered 1
-    start j7diag

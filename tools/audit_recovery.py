@@ -228,8 +228,6 @@ def main() -> int:
             "sbin/busybox",
             "sbin/sh",
             "sbin/libminuitwrp.so",
-            "sbin/j720f_runtime_diag.sh",
-            "sbin/j720f_collect_direct_usb_trace.sh",
             "sbin/blkid",
             "sbin/hexdump",
             "sbin/head",
@@ -281,33 +279,63 @@ def main() -> int:
 
         adbd = (root / "sbin/adbd").read_bytes() if (root / "sbin/adbd").is_file() else b""
         for marker in (
-            b"/tmp/J720F_ADBD_USB_TRACE.txt",
-            b"J720F_USB_DIAG",
-            b"J720F_MAIN_USB_GATE",
-            b"J720F_MAIN_USB_DECISION",
-            b"J720F_SHELL_CHILD phase=pre_setcon_recovery",
-            b"post_setcon_recovery",
+            b"/dev/usb-ffs/adb/ep0",
+            b"/dev/usb-ffs/adb/ep1",
+            b"/dev/usb-ffs/adb/ep2",
+            b"j720f.usb.transport",
+            b"native-android71-ffs",
+            b"u:r:recovery:s0",
+            b"/sbin/sh",
             b"J720F_CHILD_RECOVERY_SELCON failed",
             b"J720F PTY setexeccon",
-            b"phase=pty_setexec_recovery_pending",
-            b"post_setexec_recovery_pending",
-            b"J720F_ADB_SYNC_WORKER",
             b"J720F_ADB_SYNC_FD",
             b"J720F adb command child lost root before recovery setcon",
             b"J720F adb child lost UID/GID 0 before exec",
             b"J720F /sbin/sh is not executable before adb child exec",
-            b"/tmp/J720F_ADBD_TRACE.txt",
         ):
             if marker not in adbd:
-                errors.append(f"instrumented /sbin/adbd is missing marker: {marker!r}")
-        if b"/data/adb/adb-" in adbd:
-            errors.append("instrumented /sbin/adbd still writes its native trace under /data")
+                errors.append(f"release /sbin/adbd is missing functional marker: {marker!r}")
+
+        for diagnostic_marker in (
+            b"/tmp/J720F_ADBD_USB_TRACE.txt",
+            b"/tmp/J720F_ADBD_TRACE.txt",
+            b"J720F_USB_DIAG",
+            b"J720F_MAIN_USB_GATE",
+            b"J720F_MAIN_USB_DECISION",
+            b"J720F_SHELL_CHILD phase=",
+            b"event=usb_init_transport",
+            b"event=usb_init_choice",
+            b"event=v2_descriptor_write",
+            b"event=ffs_ready_property_set",
+        ):
+            if diagnostic_marker in adbd:
+                errors.append(
+                    f"release /sbin/adbd still contains development diagnostic: {diagnostic_marker!r}"
+                )
+
         for stale_marker in (
             b"J720F_SHELL_CHILD phase=adbd_root_pre_exec",
             b"J720F_CHILD_SU_SELCON failed",
         ):
             if stale_marker in adbd:
-                errors.append(f"instrumented /sbin/adbd retains stale command-child marker: {stale_marker!r}")
+                errors.append(f"release /sbin/adbd retains stale command-child marker: {stale_marker!r}")
+
+        linker64 = (root / "sbin/linker64").read_bytes() if (root / "sbin/linker64").is_file() else b""
+        for diagnostic_marker in (b"J720F_LINKER_DIAG", b"J720F_LINKER_CRED"):
+            if diagnostic_marker in linker64:
+                errors.append(f"release linker64 still contains development diagnostic: {diagnostic_marker!r}")
+
+        init_binary = init_path.read_bytes() if init_path.is_file() else b""
+        if b"Function FS Gadget" not in init_binary:
+            errors.append("/init is missing the Samsung FunctionFS selector fallback")
+        for diagnostic_marker in (
+            b"J720F_INIT_UDC",
+            b"J720F_UDC_CONTROL",
+            b"J720F_UEVENT_SELECTOR",
+            b"acm_same_g1",
+        ):
+            if diagnostic_marker in init_binary:
+                errors.append(f"release /init still contains development diagnostic: {diagnostic_marker!r}")
 
         service_rc = read_text(root, "init.recovery.service.rc")
         require_contains(errors, service_rc, "service recovery /sbin/recovery", "recovery service rc")
@@ -345,18 +373,15 @@ def main() -> int:
             errors.append("init.rc still invokes the obsolete late-permissive helper")
 
         merged_file_contexts = read_text(root, "file_contexts")
-        require_contains(
-            errors,
-            merged_file_contexts,
+        for forbidden_context in (
             "/tmp/J720F_ADBD_USB_TRACE\\.txt",
-            "merged recovery file_contexts",
-        )
-        require_contains(
-            errors,
-            merged_file_contexts,
             "/tmp/J720F_ADBD_TRACE\\.txt",
-            "merged recovery file_contexts",
-        )
+            "j720f_adbd_trace_file",
+        ):
+            if forbidden_context in merged_file_contexts:
+                errors.append(
+                    f"release merged file_contexts still contains diagnostic label: {forbidden_context}"
+                )
 
         properties = read_text(root, "default.prop")
         for line in (
@@ -399,7 +424,6 @@ def main() -> int:
             "setprop sys.usb.ffs.ready 0",
             "setprop j720f.usb.transport native-android71-ffs",
             "setprop j720f.usb.adbd_domain_only 1",
-            "setprop j720f.usb.direct_trace 1",
             "setprop j720f.usb.force_ffs_entry 1",
             "setprop j720f.usb.pure_configfs 0",
             "setprop j720f.usb.stock_android_usb_gate 1",
@@ -407,12 +431,6 @@ def main() -> int:
             "setprop j720f.usb.rebind_req idle",
             "setprop j720f.usb.rebind_req adb",
             "setprop j720f.usb.rebind_req mtp",
-            "setprop persist.adb.trace_mask all",
-            "write /tmp/J720F_ADBD_USB_TRACE.txt J720F_USB_DIAG_INIT_PRECREATED",
-            "restorecon /tmp/J720F_ADBD_USB_TRACE.txt",
-            "write /tmp/J720F_ADBD_TRACE.txt J720F_ADBD_TRACE_INIT_PRECREATED",
-            "restorecon /tmp/J720F_ADBD_TRACE.txt",
-            "setprop j720f.usb.trace_precreated 1",
             "mount configfs none /sys/kernel/config",
             "/sys/kernel/config/usb_gadget/g1/functions/ffs.adb",
             "/sys/kernel/config/usb_gadget/g1/configs/c.1/ffs.adb",
@@ -421,7 +439,6 @@ def main() -> int:
             "setprop j720f.usb.mtp_create_action 1",
             "mount functionfs adb /dev/usb-ffs/adb uid=0,gid=0",
             "setprop j720f.usb.ffs_mounted 1",
-            "service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh",
             "on property:j720f.usb.rebind_req=adb && property:sys.usb.ffs.ready=1",
             "on property:j720f.usb.rebind_req=mtp && property:sys.usb.ffs.ready=1",
             "write /sys/class/android_usb/android0/functions mtp,adb",
@@ -578,67 +595,31 @@ def main() -> int:
         if "j720f_usb_report" in usb:
             errors.append("USB rc still relies on the failed init-domain report service")
 
-        if (root / "sbin/postrecoveryboot.sh").exists():
-            errors.append("blocking /sbin/postrecoveryboot.sh must not be packaged")
-
-        diag = read_text(root, "sbin/j720f_runtime_diag.sh")
-        for line in (
-            "J720F_RUNTIME_DIAGNOSTICS.txt",
-            "service_started=1",
-            "DMESG USB/SELINUX",
-            "NATIVE ANDROID 7.1 RECOVERY ADBD",
-            "ADBD PROCESS / CONTEXT / FDS",
-            "ADBD MAIN USB GATE / DIRECT FUNCTIONFS TRACE",
-            "J720F_MAIN_USB_(GATE|DECISION)",
-            "DIRECT ADBD FUNCTIONFS SYSCALL TRACE",
-            "NATIVE ADB TRACE",
-            "/tmp/J720F_ADBD_USB_TRACE.txt",
-            "/tmp/J720F_ADBD_TRACE.txt",
-            "j720f_collect_direct_usb_trace.sh auto",
-            "pidof adbd",
-            "/dev/usb-ffs/adb",
-            "/sbin/adbd",
-            "/sys/kernel/config/usb_gadget/g1/functions",
-            "/sys/kernel/config/usb_gadget/g1",
-            "/sys/class/android_usb/android0",
-        ):
-            require_contains(errors, diag, line, "safe init diagnostic service")
-        for forbidden in (
-            "/sbin/twrp",
-            "ctl.stop",
-            "ctl.start",
-            "mount -t",
-            "tune2fs",
-        ):
-            if forbidden in diag:
-                errors.append(f"safe diagnostic script contains forbidden operation: {forbidden}")
-
-        collector = read_text(root, "sbin/j720f_collect_direct_usb_trace.sh")
-        for line in (
-            "J720F_DIRECT_USB_TRACE",
+        for forbidden_diagnostic in (
+            "j720f.usb.direct_trace",
+            "persist.adb.trace_mask",
             "J720F_ADBD_USB_TRACE.txt",
             "J720F_ADBD_TRACE.txt",
-            "J720F_RUNTIME_DIAGNOSTICS.txt",
-            "collection_summary.txt",
-            "trace_metadata.txt",
-            "data_access.txt",
-            "main_usb_gate_lines=",
-            "main_usb_decision_lines=",
-        ):
-            require_contains(errors, collector, line, "direct USB trace collector")
-        for forbidden in ("mount -t", "ctl.stop", "ctl.start", "Format Data"):
-            if forbidden in collector:
-                errors.append(f"direct USB trace collector contains forbidden operation: {forbidden}")
-
-        for line in (
-            "service j7diag /sbin/sh /sbin/j720f_runtime_diag.sh",
-            "group root shell readproc",
-            "seclabel u:r:recovery:s0",
-            "on property:init.svc.recovery=running",
-            "setprop j720f.diag.triggered 1",
+            "j720f.usb.trace_precreated",
+            "service j7diag",
+            "j720f_runtime_diag.sh",
+            "j720f.diag.triggered",
             "start j7diag",
         ):
-            require_contains(errors, usb, line, "safe init diagnostic service rc")
+            if forbidden_diagnostic in usb:
+                errors.append(
+                    f"release USB rc still contains development diagnostic: {forbidden_diagnostic}"
+                )
+
+        for forbidden_script in (
+            "sbin/j720f_runtime_diag.sh",
+            "sbin/j720f_collect_direct_usb_trace.sh",
+        ):
+            if forbidden_script in normalized or (root / forbidden_script).exists():
+                errors.append(f"release ramdisk still packages diagnostic script: {forbidden_script}")
+
+        if (root / "sbin/postrecoveryboot.sh").exists():
+            errors.append("blocking /sbin/postrecoveryboot.sh must not be packaged")
 
         forbidden_ramdisk = {
             "init.recovery.vold_decrypt.rc",
@@ -753,19 +734,18 @@ def main() -> int:
     ):
         require_contains(errors, policy, rule, "device recovery policy")
 
-    trace_policy = (args.tree / "sepolicy/j720f_trace.te").read_text(errors="ignore")
+    trace_policy_path = args.tree / "sepolicy/j720f_trace.te"
     file_contexts = (args.tree / "sepolicy/file_contexts").read_text(errors="ignore")
-    for rule in (
-        "type j720f_adbd_trace_file, file_type;",
-        "allow adbd j720f_adbd_trace_file:file create_file_perms;",
-        "allow recovery j720f_adbd_trace_file:file r_file_perms;",
-    ):
-        require_contains(errors, trace_policy, rule, "shared trace-file policy")
-    for trace_path in (
+    if trace_policy_path.exists():
+        errors.append("development-only sepolicy/j720f_trace.te remains in the release tree")
+    all_policy_text = "\n".join((init_policy, recovery_policy, adbd_policy, file_contexts))
+    for diagnostic_marker in (
+        "j720f_adbd_trace_file",
         "/tmp/J720F_ADBD_USB_TRACE\\.txt",
         "/tmp/J720F_ADBD_TRACE\\.txt",
     ):
-        require_contains(errors, file_contexts, trace_path, "trace file_contexts")
+        if diagnostic_marker in all_policy_text:
+            errors.append(f"release policy still contains diagnostic marker: {diagnostic_marker}")
     require_contains(
         errors, file_contexts, "/dev/usb_mtp_gadget.*", "MTP device file_contexts"
     )
@@ -783,12 +763,6 @@ def main() -> int:
     for prefix in ("ro.twrp.", "twrp.", "recovery.perf.", "j720f."):
         require_contains(errors, property_contexts, prefix, "device property contexts")
 
-    runtime_diag = (args.tree / "recovery/root/sbin/j720f_runtime_diag.sh").read_text(errors="ignore")
-    collector = (args.tree / "recovery/root/sbin/j720f_collect_direct_usb_trace.sh").read_text(errors="ignore")
-    for script_name, script in (("runtime diagnostic", runtime_diag), ("trace collector", collector)):
-        require_contains(errors, script, "/sbin/ls -ldZ /dev /dev/usb-ffs", script_name)
-        require_contains(errors, script, "/dev/usb-ffs/adb/ep0", script_name)
-
     # Android 7.1 system/sepolicy/domain.te has an unconditional neverallow
     # that forbids domains from creating or writing rootfs-labelled files.
     # Keep the audit aligned with the compilable policy and reject any
@@ -798,7 +772,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB + Samsung kernel MTP with pinned CUL1 kernel/DT, proven ADB exec credential patch, automatic MMS438 boot self-test suppressed, and J720F RTC build-time floor correction",
+        "layout": "Android 7.1 TWRP 3.3 release candidate with stock-order ConfigFS ADB, Samsung kernel MTP, pinned CUL1 kernel/DT, proven ADB exec credential patch, automatic MMS438 boot self-test suppression, and J720F RTC build-time floor correction",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),
