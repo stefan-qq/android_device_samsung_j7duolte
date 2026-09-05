@@ -49,7 +49,7 @@ allow recovery mtp_device:chr_file rw_file_perms;
 
 # Recovery clock correction. The stock Samsung kernel boots CLOCK_REALTIME from
 # rtc0, but this device can retain a stale PMIC RTC for years while recovery is
-# still otherwise healthy. TWRP must be able to set CLOCK_REALTIME and, during
-# explicit validation, access rtc0 without relaxing the whole recovery domain.
+# still otherwise healthy. The J720F TWRP build-time floor repairs only an RTC
+# older than the recovery image and persists that one-way correction to rtc0.
 allow recovery self:capability sys_time;
 allow recovery rtc_device:chr_file rw_file_perms;

@@ -258,6 +258,18 @@ def main() -> int:
         if b"/sbin/orsin" in recovery or b"/sbin/orsout" in recovery:
             errors.append("/sbin/recovery still embeds read-only /sbin ORS FIFO paths")
 
+        for marker in (
+            b"J720F RTC build-floor:",
+            b"ro.bootimage.build.date.utc",
+            b"/sys/class/rtc/rtc0/since_epoch",
+            b"/sbin/hwclock -w -u -f /dev/rtc0",
+        ):
+            if marker not in recovery:
+                errors.append(
+                    "/sbin/recovery is missing the J720F RTC build-time floor marker: "
+                    + marker.decode("ascii", "replace")
+                )
+
         shell_path = root / "sbin/sh"
         if not shell_path.is_symlink():
             errors.append("/sbin/sh is not the expected BusyBox symlink")
@@ -786,7 +798,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB + Samsung kernel MTP with pinned CUL1 kernel/DT, proven ADB exec credential patch, and automatic MMS438 boot self-test suppressed",
+        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB + Samsung kernel MTP with pinned CUL1 kernel/DT, proven ADB exec credential patch, automatic MMS438 boot self-test suppressed, and J720F RTC build-time floor correction",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),
