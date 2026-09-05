@@ -19,12 +19,21 @@ import tempfile
 LIMIT = 39_845_888
 PAGE = 2048
 STOCK_KERNEL_SHA256 = "f91660e294f4532d266d23f386f99f4e9c290859154236d82e5280af9f11d268"
-EXPECTED_KERNEL_SHA256 = "d33cf9471a60e8a3235a656bd949b18b1d0805945cc3072f463274bfe23f8a93"
+EXPECTED_KERNEL_SHA256 = "7fb88490066cfd70e7daf245e88d86ec923f2a14244f668f35545c07329923e7"
 
 # Proven Samsung /sbin/adbd exec credential rewrite.
 ADB_EXEC_CRED_OFFSET = 0x154D18
 ADB_EXEC_CRED_STOCK = bytes.fromhex("02FA8052")
 ADB_EXEC_CRED_PATCHED = bytes.fromhex("02008052")
+
+# Recovery-only MMS438 correction: skip the automatic delayed boot self-test
+# that calls mms_run_rawdata and power-cycles the controller. Preserve the
+# separate/manual raw-data diagnostic call.
+TOUCH_INFO_RAWDATA_OFFSET = 0x5C7950
+TOUCH_INFO_RAWDATA_STOCK = bytes.fromhex("D0FEFF97")
+TOUCH_INFO_RAWDATA_PATCHED = bytes.fromhex("1F2003D5")
+TOUCH_MANUAL_RAWDATA_OFFSET = 0x5C7B10
+TOUCH_MANUAL_RAWDATA_STOCK = bytes.fromhex("60FEFF97")
 
 # Both earlier DEFEX hypotheses were disproven on hardware and must stay stock.
 DEFEX_EXECVE_SELECTOR_OFFSET = 0x154524
@@ -160,6 +169,19 @@ def main() -> int:
         )
     if kernel[ADB_EXEC_CRED_OFFSET : ADB_EXEC_CRED_OFFSET + 4] != ADB_EXEC_CRED_PATCHED:
         errors.append("recovery kernel is missing the proven ADB exec credential patch")
+
+    if (
+        kernel[TOUCH_INFO_RAWDATA_OFFSET : TOUCH_INFO_RAWDATA_OFFSET + 4]
+        != TOUCH_INFO_RAWDATA_PATCHED
+    ):
+        errors.append(
+            "recovery kernel is missing the MMS438 automatic boot self-test suppression"
+        )
+    if (
+        kernel[TOUCH_MANUAL_RAWDATA_OFFSET : TOUCH_MANUAL_RAWDATA_OFFSET + 4]
+        != TOUCH_MANUAL_RAWDATA_STOCK
+    ):
+        errors.append("manual/dump-mode MMS438 raw-data diagnostic call was modified")
 
     selector = kernel[DEFEX_EXECVE_SELECTOR_OFFSET : DEFEX_EXECVE_SELECTOR_OFFSET + 4]
     if selector != DEFEX_EXECVE_SELECTOR_STOCK:
@@ -762,7 +784,7 @@ def main() -> int:
 
     report = {
         "image": str(args.image),
-        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB + Samsung kernel MTP with pinned CUL1 kernel/DT and proven recovery-only ADB exec credential patch",
+        "layout": "Android 7.1 TWRP 3.3 stock-order ConfigFS ADB + Samsung kernel MTP with pinned CUL1 kernel/DT, proven ADB exec credential patch, and automatic MMS438 boot self-test suppressed",
         "size": len(blob),
         "limit": LIMIT,
         "headroom": LIMIT - len(blob),
@@ -778,6 +800,16 @@ def main() -> int:
             "generic_defex_selector_stock": DEFEX_EXECVE_SELECTOR_STOCK.hex(),
             "alternate_adb_root_stock": OTHER_ADB_ROOT_STOCK.hex(),
             "scope": "recovery image only",
+        },
+        "kernel_touch_boot_selftest_patch": {
+            "offset": TOUCH_INFO_RAWDATA_OFFSET,
+            "offset_hex": hex(TOUCH_INFO_RAWDATA_OFFSET),
+            "before_hex": TOUCH_INFO_RAWDATA_STOCK.hex(),
+            "after_hex": TOUCH_INFO_RAWDATA_PATCHED.hex(),
+            "manual_rawdata_offset": TOUCH_MANUAL_RAWDATA_OFFSET,
+            "manual_rawdata_offset_hex": hex(TOUCH_MANUAL_RAWDATA_OFFSET),
+            "manual_rawdata_stock_hex": TOUCH_MANUAL_RAWDATA_STOCK.hex(),
+            "scope": "recovery image only; automatic delayed info-work call only",
         },
         "dt_sha256": digest(dt),
         "errors": errors,
