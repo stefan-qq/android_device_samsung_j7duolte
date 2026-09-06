@@ -289,7 +289,7 @@ def main() -> int:
             b"J720F_CHILD_RECOVERY_SELCON failed",
             b"J720F PTY setexeccon",
             b"J720F_ADB_SYNC_FD",
-            b"J720F adb command child lost root before recovery setcon",
+            b"J720F adb command child lost UID/GID 0 before recovery setcon",
             b"J720F adb child lost UID/GID 0 before exec",
             b"J720F /sbin/sh is not executable before adb child exec",
         ):
