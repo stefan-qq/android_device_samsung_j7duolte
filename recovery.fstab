@@ -1,6 +1,9 @@
 # Samsung SM-J720F / j7duolte - PIT-backed TWRP 3.3 recovery fstab
 
-/system     ext4  /dev/block/platform/13500000.dwmmc0/by-name/SYSTEM     flags=display=System;backup=1;wipeingui;flashimg=1
+/system     ext4  /dev/block/platform/13500000.dwmmc0/by-name/SYSTEM     flags=display=System;backup=1;wipeingui
+# Raw alias for TWRP Image Flash. Keep the mountable ext4 /system entry above;
+# image flashing must use an emmc/DD backup method rather than BM_FILES.
+/system_image emmc /dev/block/platform/13500000.dwmmc0/by-name/SYSTEM     flags=display="System Image";backup=1;flashimg=1
 /vendor     ext4  /dev/block/platform/13500000.dwmmc0/by-name/VENDOR     flags=display=Vendor;backup=1;wipeingui
 /odm        ext4  /dev/block/platform/13500000.dwmmc0/by-name/ODM        flags=display=ODM;backup=1;wipeingui
 /data       ext4  /dev/block/platform/13500000.dwmmc0/by-name/USERDATA   flags=display=Data;storage;backup=1;wipeingui;length=-20480

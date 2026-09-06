@@ -236,6 +236,10 @@ def main() -> int:
             if relative not in normalized and not (root / relative).is_file():
                 errors.append(f"generated ramdisk is missing {relative}")
 
+        twrp_app = root / "sbin/me.twrp.twrpapp.apk"
+        if "sbin/me.twrp.twrpapp.apk" in normalized or twrp_app.exists():
+            errors.append("release ramdisk still contains the excluded Official TWRP App")
+
         for relative in ("external_sd", "external_sd/j720f.mountpoint"):
             if relative not in normalized and not (root / relative).exists():
                 errors.append(f"generated ramdisk is missing {relative}")
@@ -396,6 +400,19 @@ def main() -> int:
             errors.append("default.prop still enables MTP")
 
         fstab = read_text(root, "etc/recovery.fstab")
+        system_lines = [line for line in fstab.splitlines() if line.startswith("/system ")]
+        if len(system_lines) != 1:
+            errors.append(f"TWRP fstab must contain exactly one mountable /system entry; found {len(system_lines)}")
+        elif "flashimg=1" in system_lines[0]:
+            errors.append("mountable ext4 /system still incorrectly advertises flashimg=1")
+
+        system_image_lines = [line for line in fstab.splitlines() if line.startswith("/system_image ")]
+        if len(system_image_lines) != 1:
+            errors.append(f"TWRP fstab must contain exactly one /system_image raw alias; found {len(system_image_lines)}")
+        else:
+            require_contains(errors, system_image_lines[0], " emmc ", "TWRP /system_image entry")
+            require_contains(errors, system_image_lines[0], "/by-name/SYSTEM", "TWRP /system_image entry")
+            require_contains(errors, system_image_lines[0], "flashimg=1", "TWRP /system_image entry")
         require_contains(errors, fstab, "/external_sd vfat /dev/block/mmcblk1p1 /dev/block/mmcblk1", "TWRP fstab")
         require_contains(errors, fstab, "/efs        emmc", "TWRP fstab")
         require_contains(errors, fstab, "/cpefs      emmc", "TWRP fstab")
