@@ -260,6 +260,19 @@ def main() -> int:
         if b"/sbin/orsin" in recovery or b"/sbin/orsout" in recovery:
             errors.append("/sbin/recovery still embeds read-only /sbin ORS FIFO paths")
 
+        storage_xml_guard = (
+            b"J720F storage.xml guard: unsupported non-text storage.xml; "
+            b"skipping legacy adopted-storage metadata"
+        )
+        if storage_xml_guard not in recovery:
+            errors.append(
+                "/sbin/recovery is missing the modern storage.xml non-text/ABX guard"
+            )
+        if b"successfully loaded storage.xml" not in recovery:
+            errors.append(
+                "/sbin/recovery unexpectedly lost legacy text storage.xml parsing"
+            )
+
         for marker in (
             b"J720F RTC build-floor:",
             b"ro.bootimage.build.date.utc",
