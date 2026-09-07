@@ -1,40 +1,16 @@
-# Samsung Galaxy J7 Duo SM-J720F (j7duolte) — Unofficial TWRP 3.3.0-0
+# TWRP 3.3.0-0 for Samsung Galaxy J7 Duo SM-J720F
 
-Unofficial TWRP recovery for the Samsung Galaxy J7 Duo **SM-J720F**
-(`j7duolte`).
+Unofficial TWRP recovery for the Samsung Galaxy J7 Duo SM-J720F (`j7duolte`).
 
-Hardware qualification was performed on:
+This device tree is intended for the SM-J720F only. It was tested on XSG/UAE Android 10 CUL1 firmware.
 
-- Model: SM-J720F
-- Region / CSC: XSG / UAE
-- Stock base: Android 10 CUL1
-- AP: J720FDDS7CUL1
-- CSC: J720FOJM7CUF1
-- Bootloader binary: 7
+## Release
 
-This release is **not an official TeamWin build**.
+Current release: `j7duolte-twrp-3.3.0-0-unofficial-r1`
 
-No support claim is made for SM-J720G or other J7 Duo variants.
+Download the release from the GitHub Releases page of this repository.
 
-## Qualified release
-
-Release tag:
-
-`j7duolte-twrp-3.3.0-0-unofficial-r1`
-
-Exact functional device-tree commit:
-
-`86cce8693b77cf79850a3e97d081dbdf8bc63936`
-
-Exact builder commit:
-
-`4e2f5051f72a2feeecdc49a634a25484fc1063a9`
-
-GitHub Actions run:
-
-`34086555239`
-
-Exact release artifacts:
+Release binaries:
 
 ```text
 recovery.img
@@ -42,107 +18,131 @@ SHA256: deaba0394c093f2a628ac54a0f6f05792a337c9a69c831ecc12b2112eb97b199
 
 recovery.tar
 SHA256: 0f9b616499cfbf495f4c9b3dae83faf21be1f91879d1122cdca2416f237977d8
-
-Actions artifact ZIP
-SHA256: fb57de09b701b91732dff151e28716e7d827ec9990ddd6adab8a1868638ba4d3
 ```
 
-The final `recovery.img` was also flashed over pristine CUL1 stock and
-read back from the live RECOVERY partition. The image-sized readback
-matched the release image byte-for-byte.
+## Tested device and firmware
 
-## Hardware-qualified recovery functionality
+| Item | Value |
+| --- | --- |
+| Model | SM-J720F |
+| Device | j7duolte |
+| Region / CSC | XSG / UAE |
+| Android base | Android 10 |
+| AP | J720FDDS7CUL1 |
+| CSC | J720FOJM7CUF1 |
+| Bootloader binary | 7 |
+| Security patch | 2021-12-01 |
 
-The exact release candidate passed:
+No support claim is made for SM-J720G or other J7 Duo variants.
 
-- GUI, framebuffer and touch
-- root recovery ADB
-- physical USB reconnect
-- MTP enumeration of Internal Storage and microSD
-- MTP file-transfer checksum roundtrip with ADB simultaneously available
-- microSD read/write
-- normal ZIP installation
-- ADB sideload
-- sideload cancellation and normal ADB return
-- Boot backup and restore
-- byte-for-byte Boot restore verification
-- raw Boot image flashing
-- System Image flashing
-- immediate byte-for-byte System Image readback verification
-- reboot to Recovery
-- reboot to Samsung Download Mode
-- Power Off
-- stock Android boot after a read-only TWRP visit
+## Installation
 
-## Installation on stock Samsung firmware
-
-On Linux, the qualified recovery-flash method is:
+Linux with Heimdall:
 
 ```sh
 sudo heimdall flash --RECOVERY recovery.img --no-reboot
 ```
 
-**Important:** after Heimdall finishes, boot directly into recovery with
-the hardware keys before allowing Android to start.
+After flashing, immediately boot directly into recovery with the hardware key combination.
 
-Samsung stock Android can automatically restore the Samsung stock recovery
-after Android boots. This behavior was reconfirmed during the final CUL1
-release qualification.
+Do not let Android boot first. Samsung stock firmware can restore the stock recovery after Android starts. This behavior was confirmed during final testing on CUL1.
 
-## Stock Android 10 encrypted /data
+TWRP installation does not require repartitioning. Do not modify the PIT or partition layout.
 
-CUL1 stock Android uses Samsung legacy encrypted userdata that this TWRP
-3.3 recovery does not decrypt.
+## Stock encrypted /data
 
-On freshly restored stock firmware, `/data` may therefore appear as
-0 MB or be unmountable in recovery.
+CUL1 stock firmware uses Samsung legacy full-disk encryption that this TWRP version cannot decrypt.
 
-`Format Data` removes the stock encryption and creates usable plain ext4
-userdata, but it **erases all userdata**.
+On fresh stock firmware, `/data` can therefore appear as 0 MB or fail to mount in recovery.
 
-Do not interpret the stock-encrypted 0 MB condition as a recovery defect.
+Using `Format Data` removes the stock encryption and creates usable plain ext4 userdata, but it permanently erases userdata.
 
-## Modern Android / GSI userdata limitation
+## Modern Android / GSI notes
 
-This legacy TWRP 3.3 recovery is not designed for complete file-level
-backup and restore of modern Android 13-era userdata policy layouts.
+Modern Android GSIs can produce permission-denied messages while this legacy TWRP scans parts of `/data`. Complete file-level Data backup and restore should not be assumed for Android 13-era GSIs.
 
-Modern GSIs may produce permission-denied messages while TWRP scans some
-`/data` directories.
+Modern Android can also store `/data/system/storage.xml` as Android Binary XML. TWRP 3.3 does not contain an ABX parser. This build detects unsupported non-text `storage.xml`, skips the legacy metadata parse, and continues the existing adopted-storage block-device probing.
 
-Do not rely on complete file-level Data backup/restore for modern Android
-GSIs.
+The separate GSI no-verity Boot modification used on this device is not required to install or use TWRP.
 
-## Modern storage.xml handling
+Magisk is not included in this recovery.
 
-Modern Android versions may store `/data/system/storage.xml` as binary
-Android Binary XML (ABX).
+## Tested recovery functions
 
-TWRP 3.3 does not implement an ABX metadata parser.
+The release was tested for:
 
-This build contains a narrow compatibility guard that detects unsupported
-non-text `storage.xml`, skips only the legacy text-XML metadata parse, and
-continues the existing adopted-storage block-device probing.
+- GUI, framebuffer, brightness and touch
+- root recovery ADB
+- physical USB reconnect
+- microSD read/write
+- MTP transfer with checksum verification
+- MTP and ADB at the same time
+- normal ZIP installation
+- ADB sideload and sideload cancellation
+- Boot backup and restore with byte-for-byte verification
+- raw Boot image flashing
+- System Image flashing with immediate readback verification
+- reboot to Recovery
+- reboot to Download Mode
+- Power Off with USB unplugged
+- stock Android boot after a read-only TWRP visit
+- final recovery-only flash over pristine CUL1 stock
+- live recovery image readback matching the released image
 
-It does **not** claim ABX metadata support.
+## Recovery kernel
 
-## Recovery kernel provenance
-
-The recovery uses the CUL1 stock-derived kernel and device tree with two
-audited recovery-only binary changes:
+The recovery uses the CUL1 stock-derived kernel and device tree with two recovery-only binary changes used by the tested build:
 
 - adbd credential-preservation patch
 - MMS438 automatic boot self-test suppression
 
-The recovery does not contain Magisk.
+## Source and build provenance
 
-The separate GSI SYSTEM no-verity Boot modification used for modern GSI
-booting is **not required to install or use this TWRP recovery**.
+The release tag points to the exact device-tree source used for the released binary.
 
-## Partition safety
+```text
+Release tag:
+j7duolte-twrp-3.3.0-0-unofficial-r1
 
-Do not repartition the device for recovery installation.
+Device tree:
+86cce8693b77cf79850a3e97d081dbdf8bc63936
 
-Do not modify or format EFS or CPEFS.
+Builder:
+4e2f5051f72a2feeecdc49a634a25484fc1063a9
+
+TWRP:
+b1a7ae9cd98e6ac3377d1fecc1341b9643a4f15b
+
+system/core:
+274f5e70d16b80fb6d464aeed3294695fb34fb43
+
+bionic:
+cb0033e69dd22cb42f7a2d6d87cb38ba45cca7da
+```
+
+The build and provenance tooling is maintained in:
+
+https://github.com/stefan-qq/TWRP-Recovery-Builder-2024
+
+The original GitHub Actions run is no longer retained in the Actions history. The exact build artifact is preserved with the release as:
+
+```text
+j7duolte-twrp-3.3.0-0-unofficial-r1-build-artifact.zip
+SHA256: fb57de09b701b91732dff151e28716e7d827ec9990ddd6adab8a1868638ba4d3
+```
+
+The release tag and binary hashes remain the source of truth for release r1.
+
+## Safety
+
+Do not format, flash or modify EFS or CPEFS for recovery installation or testing.
+
+Do not repartition the device for this recovery.
+
+## Credits
+
+- TeamWin Recovery Project
+- OmniROM and Android Open Source Project contributors
+- `kinguser981/TWRP-Recovery-Builder-2024` for the upstream GitHub Actions builder project used as the starting point for the build harness
 
 This project is unofficial and is not affiliated with TeamWin.
